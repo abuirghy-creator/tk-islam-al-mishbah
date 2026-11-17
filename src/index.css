@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@layer utilities {
+  @media print {
+    body {
+      background: white !important;
+      color: black !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    header,
+    aside,
+    footer,
+    nav,
+    button,
+    input,
+    select,
+    .no-print {
+      display: none !important;
+    }
+
+    .print-sheet-area {
+      display: flex !important;
+      flex-wrap: wrap !important;
+      justify-content: flex-start !important;
+      gap: 16px !important;
+      margin: 0 auto !important;
+      padding: 0 !important;
+      background: transparent !important;
+    }
+
+    .print-sheet-area > * {
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+  }
+}

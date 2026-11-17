@@ -1,0 +1,11 @@
+{
+  "name": "TK AL Mishbah - Sistem Informasi Akademik & Presensi",
+  "description": "Aplikasi manajemen sekolah TK Islam Al Mishbah: Absensi selfie guru, scan barcode siswa, pelacakan GPS, halaqoh tahfidz harian, laporan PDF/Excel, SPP online, dan interaksi wali murid.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
