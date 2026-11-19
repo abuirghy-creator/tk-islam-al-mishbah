@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const SchoolGallery: React.FC = () => {
-  const { gallery, announcements, currentUser, addAnnouncement } = useApp();
+  const { gallery, announcements, currentUser, addAnnouncement, canEditSchoolData } = useApp();
 
   const [activeTab, setActiveTab] = useState<'gallery' | 'announcements'>('gallery');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -36,6 +36,7 @@ export const SchoolGallery: React.FC = () => {
 
   const handleSaveAnnouncement = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEditSchoolData) return;
     if (!annTitle.trim() || !annContent.trim()) return;
 
     addAnnouncement({
@@ -199,10 +200,10 @@ export const SchoolGallery: React.FC = () => {
               </p>
             </div>
 
-            {currentUser.role !== 'ortu' && (
+            {canEditSchoolData && (
               <button
                 onClick={() => setIsAddAnnModalOpen(true)}
-                className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2"
+                className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4" /> Buat Pengumuman Baru
               </button>
@@ -277,7 +278,7 @@ export const SchoolGallery: React.FC = () => {
       )}
 
       {/* CREATE ANNOUNCEMENT MODAL */}
-      {isAddAnnModalOpen && (
+      {isAddAnnModalOpen && canEditSchoolData && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
             <div className="p-5 bg-emerald-50 border-b border-emerald-100 flex items-center justify-between">

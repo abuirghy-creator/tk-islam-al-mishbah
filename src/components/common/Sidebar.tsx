@@ -14,7 +14,8 @@ import {
   Sparkles,
   ShieldCheck,
   ChevronRight,
-  School
+  School,
+  Rocket
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -22,16 +23,29 @@ interface SidebarProps {
   onSelectTab: (tabKey: string) => void;
   isOpenMobile: boolean;
   onCloseMobile: () => void;
+  onOpenPublishModal?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onSelectTab,
   isOpenMobile,
-  onCloseMobile
+  onCloseMobile,
+  onOpenPublishModal
 }) => {
-  const { currentUser, leaveRequests } = useApp();
+  const {
+    currentUser,
+    leaveRequests,
+    canEditSchoolData,
+    hasPendingChanges,
+    hasRemoteUpdate,
+    publishMeta,
+    autoSaveStatus,
+    realtimeConnected
+  } = useApp();
   const pendingLeavesCount = leaveRequests.filter((l) => l.status === 'pending').length;
+
+  const isParent = currentUser.role === 'ortu';
 
   const navItems = [
     {
@@ -44,61 +58,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
       key: 'teacher-att',
       label: 'Presensi & Cuti Guru/Staf',
       icon: Camera,
-      badge: pendingLeavesCount > 0 ? `${pendingLeavesCount} Butuh ACC` : 'ACC Kepsek',
+      badge: pendingLeavesCount > 0 ? `${pendingLeavesCount} Butuh ACC` : 'ACC Pemilik',
       roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
     },
     {
       key: 'student-att',
       label: 'Presensi Scan Siswa',
       icon: ScanLine,
-      badge: 'Barcode Real-time',
-      roles: ['guru', 'pegawai', 'ortu', 'admin', 'kepala_sekolah', 'owner']
+      badge: 'Barcode & Manual',
+      roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
     },
     {
       key: 'gps-tracker',
       label: 'Pelacakan Lokasi GPS',
       icon: Navigation,
       badge: 'Safe Zone',
-      roles: ['guru', 'pegawai', 'ortu', 'admin', 'kepala_sekolah', 'owner']
+      roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
     },
     {
       key: 'master-data',
       label: 'Data Guru, Staf & Murid',
       icon: Users,
-      badge: 'CRUD',
+      badge: canEditSchoolData ? 'Kelola Data' : 'Lihat Data',
       roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
     },
     {
       key: 'halaqoh',
-      label: 'Halaqoh Tahfidz Cilik',
+      label: isParent ? 'Buku Mutabaah (Halaqoh)' : 'Halaqoh Tahfidz & Iqro',
       icon: BookOpen,
-      badge: '3 Pilar Nilai',
+      badge: isParent ? 'Pantau Anak' : 'Tahfidz & Iqro',
       roles: ['guru', 'pegawai', 'ortu', 'admin', 'kepala_sekolah', 'owner']
     },
     {
       key: 'reports',
-      label: 'Laporan Presensi (PDF/XLS)',
+      label: isParent ? 'Laporan Absensi Anak' : 'Laporan Presensi (PDF/XLS)',
       icon: FileText,
-      badge: 'Download',
-      roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
+      badge: isParent ? 'Lihat & PDF' : 'Download',
+      roles: ['guru', 'pegawai', 'ortu', 'admin', 'kepala_sekolah', 'owner']
     },
     {
       key: 'spp',
       label: 'Pembayaran SPP Online',
       icon: CreditCard,
       badge: 'QRIS/BSI',
-      roles: ['guru', 'pegawai', 'ortu', 'admin', 'kepala_sekolah', 'owner']
+      roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
     },
     {
       key: 'chat',
       label: 'Chat Ortu & Guru',
       icon: MessageSquare,
       badge: 'Grup & Pribadi',
-      roles: ['guru', 'pegawai', 'ortu', 'admin', 'kepala_sekolah', 'owner']
+      roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
     },
     {
       key: 'gallery',
-      label: 'Galeri & Pengumuman',
+      label: isParent ? 'Kegiatan & Pengumuman' : 'Galeri & Pengumuman',
       icon: Image,
       roles: ['guru', 'pegawai', 'ortu', 'admin', 'kepala_sekolah', 'owner']
     },
@@ -106,17 +120,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       key: 'school-profile',
       label: 'Profil & Logo Sekolah',
       icon: School,
-      badge: 'Motto/Logo',
-      roles: ['guru', 'pegawai', 'ortu', 'admin', 'kepala_sekolah', 'owner']
+      badge: canEditSchoolData ? 'Edit Profil' : 'Lihat',
+      roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
     }
   ];
 
-  const visibleItems = navItems.filter((item) =>
-    currentUser.role === 'owner' ||
-    currentUser.role === 'kepala_sekolah' ||
-    currentUser.role === 'admin' ||
-    item.roles.includes(currentUser.role)
-  );
+  const visibleItems = navItems.filter((item) => item.roles.includes(currentUser.role));
 
   return (
     <>
@@ -136,7 +145,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       >
         <div className="p-3 space-y-1 overflow-y-auto flex-1">
           <div className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Menu Utama Aplikasi
+            {isParent ? 'Menu Portal Wali Murid' : 'Menu Utama Aplikasi'}
           </div>
 
           {visibleItems.map((item) => {
@@ -180,6 +189,67 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
         </div>
+
+        {/* Auto-Save & Sync Quick Card (Non-Ortu Only) */}
+        {!isParent && onOpenPublishModal && (canEditSchoolData || hasRemoteUpdate || publishMeta.publishedVersion > 0) && (
+          <div className="px-3 pb-2">
+            <button
+              type="button"
+              onClick={() => {
+                onOpenPublishModal();
+                onCloseMobile();
+              }}
+              className={`w-full p-2.5 rounded-2xl border text-left flex items-center justify-between gap-2 transition-all cursor-pointer ${
+                hasRemoteUpdate || autoSaveStatus === 'saving'
+                  ? 'bg-sky-50 border-sky-300 text-sky-950 hover:bg-sky-100'
+                  : autoSaveStatus === 'offline' || hasPendingChanges
+                  ? 'bg-amber-50 border-amber-300 text-amber-950 hover:bg-amber-100'
+                  : 'bg-emerald-50 border-emerald-200 text-emerald-950 hover:bg-emerald-100'
+              }`}
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <Rocket className="w-4 h-4 text-emerald-700 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-[11px] font-extrabold truncate">
+                    {autoSaveStatus === 'saving'
+                      ? 'Menyimpan Otomatis...'
+                      : hasRemoteUpdate
+                      ? `Update Otomatis v${publishMeta.publishedVersion}`
+                      : autoSaveStatus === 'offline'
+                      ? 'Tersimpan di Lokal'
+                      : realtimeConnected
+                      ? 'Real-Time Portal Aktif'
+                      : 'Tersimpan Otomatis'}
+                  </div>
+                  <div className="text-[9px] opacity-75 truncate">
+                    {publishMeta.publishedVersion > 0
+                      ? `Live v${publishMeta.publishedVersion} • ${realtimeConnected ? 'Real-Time Sync' : 'Auto-Sync Aktif'}`
+                      : realtimeConnected
+                      ? 'WebSocket Real-Time Aktif'
+                      : 'Auto-Save & Auto-Update Aktif'}
+                  </div>
+                </div>
+              </div>
+              <span
+                className={`px-1.5 py-0.5 rounded-md text-[9px] font-black shrink-0 ${
+                  autoSaveStatus === 'saving'
+                    ? 'bg-sky-200 text-sky-900'
+                    : autoSaveStatus === 'offline'
+                    ? 'bg-amber-400 text-slate-950'
+                    : 'bg-emerald-200 text-emerald-900'
+                }`}
+              >
+                {autoSaveStatus === 'saving'
+                  ? 'Sync'
+                  : autoSaveStatus === 'offline'
+                  ? 'Lokal'
+                  : realtimeConnected
+                  ? 'Live'
+                  : 'Auto'}
+              </span>
+            </button>
+          </div>
+        )}
 
         {/* Bottom Current Profile Card */}
         <div className="p-3 border-t border-slate-100 bg-slate-50/50">

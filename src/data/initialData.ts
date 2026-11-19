@@ -21,6 +21,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'user-owner',
     username: 'pemilik.akun',
+    password: 'password123',
     name: 'Drs. H. Abdullah Mansyur',
     role: 'owner',
     isOwner: true,
@@ -32,6 +33,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'user-kepsek',
     username: 'kepala.sekolah',
+    password: 'password123',
     name: 'Hj. Siti Khadijah, M.Pd.I',
     role: 'kepala_sekolah',
     isPrincipal: true,
@@ -43,39 +45,91 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'user-guru-1',
     username: 'ustadzah.fatimah',
+    password: 'password123',
     name: 'Ustadzah Fatimah Azzahra, S.Pd.I',
     role: 'guru',
     relatedTeacherId: 'tch-1',
     avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=200&q=80',
     email: 'fatimah@tk-almishbah.sch.id',
     phone: '0812-3456-7890',
-    position: 'Wali Kelas TK A-1 (Bintang)'
+    position: 'Wali Kelas TK A-1 (Bintang Kejora)'
   },
   {
     id: 'user-guru-2',
     username: 'ustadz.ahmad',
+    password: 'password123',
     name: 'Ustadz Ahmad Fauzi, S.Q',
     role: 'guru',
     relatedTeacherId: 'tch-2',
     avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=200&q=80',
     email: 'ahmad.fauzi@tk-almishbah.sch.id',
     phone: '0813-8899-1122',
-    position: 'Koordinator Halaqoh Tahfidz'
+    position: 'Pembimbing Halaqoh & Koordinator Tahfidz'
+  },
+  {
+    id: 'user-guru-3',
+    username: 'ustadzah.nurul',
+    password: 'password123',
+    name: 'Ustadzah Nurul Hidayah, S.Pd',
+    role: 'guru',
+    relatedTeacherId: 'tch-3',
+    avatarUrl: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=300&q=80',
+    email: 'nurul@tk-almishbah.sch.id',
+    phone: '0819-2233-4455',
+    position: 'Wali Kelas TK B-1 (Cahaya Al-Quran)'
+  },
+  {
+    id: 'user-guru-4',
+    username: 'ustadzah.anisa',
+    password: 'password123',
+    name: 'Ustadzah Anisa Maharani, S.Pd',
+    role: 'guru',
+    relatedTeacherId: 'tch-4',
+    avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=300&q=80',
+    email: 'anisa@tk-almishbah.sch.id',
+    phone: '0857-1122-3344',
+    position: 'Guru Sentra Balok & Angklung'
   },
   {
     id: 'user-pegawai-1',
     username: 'admin.tu',
+    password: 'password123',
     name: 'Bunda Siti Rahmawati, S.E',
     role: 'pegawai',
     relatedStaffId: 'stf-1',
-    avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=200&q=80',
+    avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=300&q=80',
     email: 'tu@tk-almishbah.sch.id',
     phone: '0815-4433-2211',
-    position: 'Kepala Tata Usaha & Administrasi'
+    position: 'Staff Tata Usaha'
+  },
+  {
+    id: 'user-pegawai-2',
+    username: 'hendra.keuangan',
+    password: 'password123',
+    name: 'Pak Hendra Pratama, A.Md',
+    role: 'pegawai',
+    relatedStaffId: 'stf-2',
+    avatarUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=300&q=80',
+    email: 'hendra@tk-almishbah.sch.id',
+    phone: '0812-9988-1122',
+    position: 'Karyawan Keuangan & SPP'
+  },
+  {
+    id: 'user-pegawai-3',
+    username: 'suparman.keamanan',
+    password: 'password123',
+    name: 'Pak Suparman',
+    role: 'pegawai',
+    relatedStaffId: 'stf-3',
+    avatarUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80',
+    email: 'suparman@tk-almishbah.sch.id',
+    phone: '0878-5544-3322',
+    position: 'Karyawan Keamanan'
   },
   {
     id: 'user-ortu-1',
     username: 'ortu.rayyan',
+    password: 'password123',
     name: 'Bpk. Irfan Hakim (Ayah M. Rayyan)',
     role: 'ortu',
     avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=200&q=80',
@@ -86,6 +140,7 @@ export const INITIAL_USERS: User[] = [
   {
     id: 'user-ortu-2',
     username: 'ortu.aisyah',
+    password: 'password123',
     name: 'Ibu Wardah Maulida (Bunda Aisyah)',
     role: 'ortu',
     avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
@@ -520,44 +575,244 @@ export const INITIAL_STUDENT_ATTENDANCE: StudentAttendanceRecord[] = [
   }
 ];
 
-export const INITIAL_TEACHER_ATTENDANCE: TeacherAttendanceRecord[] = [
-  {
-    id: 'att-t-1',
-    date: todayStr,
-    time: '07:05:12',
-    teacherId: 'tch-1',
-    teacherName: 'Ustadzah Fatimah Azzahra, S.Pd.I',
-    selfieUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80',
-    status: 'Hadir Tepat Waktu',
-    notes: 'Tiba pagi untuk piket penyambutan siswa di selasar utama',
-    location: {
-      lat: -6.229725,
-      lng: 106.829512,
-      accuracy: 8,
-      distanceMeters: 14,
-      inRadius: true,
-      addressDescription: 'Gedung TK Al Mishbah - Area Gerbang Utama'
+const buildInitialTeacherAttendance = (): TeacherAttendanceRecord[] => {
+  const records: TeacherAttendanceRecord[] = [
+    {
+      id: 'att-t-1',
+      date: todayStr,
+      time: '07:05:12',
+      teacherId: 'tch-1',
+      teacherName: 'Ustadzah Fatimah Azzahra, S.Pd.I',
+      selfieUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80',
+      status: 'Hadir Tepat Waktu',
+      notes: 'Tiba pagi untuk piket penyambutan siswa di selasar utama',
+      location: {
+        lat: -6.229725,
+        lng: 106.829512,
+        accuracy: 8,
+        distanceMeters: 14,
+        inRadius: true,
+        addressDescription: 'Gedung TK Al Mishbah - Area Gerbang Utama'
+      }
+    },
+    {
+      id: 'att-t-2',
+      date: todayStr,
+      time: '07:10:45',
+      teacherId: 'tch-2',
+      teacherName: 'Ustadz Ahmad Fauzi, S.Q',
+      selfieUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
+      status: 'Hadir Tepat Waktu',
+      notes: 'Menyiapkan aula sholat dhuha dan mushaf tilawati',
+      location: {
+        lat: -6.229720,
+        lng: 106.829518,
+        accuracy: 6,
+        distanceMeters: 20,
+        inRadius: true,
+        addressDescription: 'Gedung Aula Al Mishbah'
+      }
+    },
+    {
+      id: 'att-t-3',
+      date: todayStr,
+      time: '07:22:18',
+      teacherId: 'tch-3',
+      teacherName: 'Ustadzah Nurul Hidayah, S.Pd',
+      selfieUrl: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=300&q=80',
+      status: 'Hadir Tepat Waktu',
+      notes: 'Menyiapkan kelas TK B-1 dan lembar calistung Islami',
+      location: {
+        lat: -6.229718,
+        lng: 106.829508,
+        accuracy: 7,
+        distanceMeters: 16,
+        inRadius: true,
+        addressDescription: 'Ruang Kelas TK B-1 Al Mishbah'
+      }
+    },
+    {
+      id: 'att-t-4',
+      date: todayStr,
+      time: '07:00:00',
+      teacherId: 'tch-4',
+      teacherName: 'Ustadzah Anisa Maharani, S.Pd',
+      selfieUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=300&q=80',
+      status: 'Izin',
+      notes: 'Izin keperluan keluarga (ACC Kepala Sekolah)',
+      location: {
+        lat: -6.229728,
+        lng: 106.829511,
+        accuracy: 10,
+        distanceMeters: 0,
+        inRadius: true,
+        addressDescription: 'Tercatat dari Perizinan Resmi'
+      }
+    },
+    {
+      id: 'att-s-stf-1',
+      date: todayStr,
+      time: '06:58:15',
+      teacherId: 'stf-1',
+      teacherName: 'Bunda Siti Rahmawati, S.E',
+      selfieUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=300&q=80',
+      status: 'Hadir Tepat Waktu',
+      notes: 'Membuka layanan Tata Usaha & buku tamu administrasi pagi',
+      location: {
+        lat: -6.229722,
+        lng: 106.829510,
+        accuracy: 7,
+        distanceMeters: 11,
+        inRadius: true,
+        addressDescription: 'Ruang Tata Usaha TK Islam Al Mishbah'
+      }
+    },
+    {
+      id: 'att-s-stf-2',
+      date: todayStr,
+      time: '07:14:30',
+      teacherId: 'stf-2',
+      teacherName: 'Pak Hendra Pratama, A.Md',
+      selfieUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=300&q=80',
+      status: 'Hadir Tepat Waktu',
+      notes: 'Rekonsiliasi transaksi pembayaran SPP & kas harian',
+      location: {
+        lat: -6.229719,
+        lng: 106.829515,
+        accuracy: 8,
+        distanceMeters: 15,
+        inRadius: true,
+        addressDescription: 'Loket Keuangan & Layanan SPP'
+      }
+    },
+    {
+      id: 'att-s-stf-3',
+      date: todayStr,
+      time: '06:45:10',
+      teacherId: 'stf-3',
+      teacherName: 'Pak Suparman',
+      selfieUrl: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=300&q=80',
+      status: 'Hadir Tepat Waktu',
+      notes: 'Pengaturan lalu lintas pengantaran santri di gerbang depan',
+      location: {
+        lat: -6.229732,
+        lng: 106.829504,
+        accuracy: 6,
+        distanceMeters: 6,
+        inRadius: true,
+        addressDescription: 'Pos Keamanan Gerbang Utama'
+      }
     }
-  },
-  {
-    id: 'att-t-2',
-    date: todayStr,
-    time: '07:10:45',
-    teacherId: 'tch-2',
-    teacherName: 'Ustadz Ahmad Fauzi, S.Q',
-    selfieUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-    status: 'Hadir Tepat Waktu',
-    notes: 'Menyiapkan aula sholat dhuha dan mushaf tilawati',
-    location: {
-      lat: -6.229720,
-      lng: 106.829518,
-      accuracy: 6,
-      distanceMeters: 20,
-      inRadius: true,
-      addressDescription: 'Gedung Aula Al Mishbah'
-    }
+  ];
+
+  // Generate historical school-day (Senin-Jumat) records across current & previous month
+  const baseDate = new Date();
+  let seq = 10;
+  for (let offset = 1; offset <= 45; offset++) {
+    const d = new Date(baseDate);
+    d.setDate(baseDate.getDate() - offset);
+    const day = d.getDay();
+    if (day === 0 || day === 6) continue; // skip Minggu & Sabtu
+
+    const dateStr = d.toISOString().split('T')[0];
+
+    INITIAL_TEACHERS.forEach((teacher, tIdx) => {
+      const seed = offset * 7 + tIdx * 3;
+      let status: TeacherAttendanceRecord['status'] = 'Hadir Tepat Waktu';
+      let time = `07:0${(seed % 9) + 1}:${String((seed * 7) % 50 + 10).padStart(2, '0')}`;
+      let notes = 'Presensi masuk pagi & kegiatan belajar mengajar';
+
+      if (seed % 19 === 0) {
+        status = 'Sakit';
+        time = '07:00:00';
+        notes = 'Surat keterangan sakit (ACC Kepala Sekolah)';
+      } else if (seed % 17 === 0) {
+        status = 'Izin';
+        time = '07:00:00';
+        notes = 'Izin urusan keluarga mendesak (ACC Kepala Sekolah)';
+      } else if (seed % 29 === 0) {
+        status = 'Cuti';
+        time = '07:00:00';
+        notes = 'Cuti tahunan terjadwal (ACC Kepala Sekolah)';
+      } else if (seed % 9 === 0) {
+        status = 'Terlambat';
+        time = `07:${34 + (seed % 15)}:${String((seed * 11) % 50 + 10).padStart(2, '0')}`;
+        notes = 'Terlambat karena kendala lalu lintas pagi';
+      } else if (seed % 2 === 0) {
+        time = `07:1${seed % 9}:${String((seed * 5) % 50 + 10).padStart(2, '0')}`;
+      }
+
+      records.push({
+        id: `att-t-hist-${seq++}`,
+        date: dateStr,
+        time,
+        teacherId: teacher.id,
+        teacherName: teacher.name,
+        selfieUrl: teacher.photoUrl,
+        status,
+        notes,
+        location: {
+          lat: -6.22972 + (tIdx * 0.00001),
+          lng: 106.82951 + (tIdx * 0.00001),
+          accuracy: 8,
+          distanceMeters: 12 + (seed % 25),
+          inRadius: true,
+          addressDescription: 'Kampus Utama TK Islam Al Mishbah'
+        }
+      });
+    });
+
+    INITIAL_STAFF.forEach((staffMember, sIdx) => {
+      const seed = offset * 11 + sIdx * 5;
+      let status: TeacherAttendanceRecord['status'] = 'Hadir Tepat Waktu';
+      let time = `06:5${(seed % 9)}:${String((seed * 3) % 50 + 10).padStart(2, '0')}`;
+      let notes = `Tugas operasional ${staffMember.department}`;
+
+      if (seed % 23 === 0) {
+        status = 'Sakit';
+        time = '07:00:00';
+        notes = 'Surat keterangan sakit (ACC Kepala Sekolah)';
+      } else if (seed % 19 === 0) {
+        status = 'Izin';
+        time = '07:00:00';
+        notes = 'Izin keperluan keluarga (ACC Kepala Sekolah)';
+      } else if (seed % 31 === 0) {
+        status = 'Cuti';
+        time = '07:00:00';
+        notes = 'Cuti terjadwal (ACC Kepala Sekolah)';
+      } else if (seed % 13 === 0) {
+        status = 'Terlambat';
+        time = `07:${33 + (seed % 14)}:${String((seed * 7) % 50 + 10).padStart(2, '0')}`;
+        notes = 'Terlambat tiba di area kerja';
+      } else if (seed % 2 === 0) {
+        time = `07:0${seed % 9}:${String((seed * 7) % 50 + 10).padStart(2, '0')}`;
+      }
+
+      records.push({
+        id: `att-stf-hist-${seq++}`,
+        date: dateStr,
+        time,
+        teacherId: staffMember.id,
+        teacherName: staffMember.name,
+        selfieUrl: staffMember.photoUrl,
+        status,
+        notes,
+        location: {
+          lat: -6.229725 + (sIdx * 0.00001),
+          lng: 106.829512 + (sIdx * 0.00001),
+          accuracy: 8,
+          distanceMeters: 10 + (seed % 20),
+          inRadius: true,
+          addressDescription: `Unit ${staffMember.department}`
+        }
+      });
+    });
   }
-];
+
+  return records;
+};
+
+export const INITIAL_TEACHER_ATTENDANCE: TeacherAttendanceRecord[] = buildInitialTeacherAttendance();
 
 export const INITIAL_HALAQOH_ASSESSMENTS: HalaqohAssessment[] = [
   {
@@ -567,13 +822,33 @@ export const INITIAL_HALAQOH_ASSESSMENTS: HalaqohAssessment[] = [
     studentName: 'Muhammad Rayyan Al-Ghifari',
     className: 'TK A-1',
     teacherName: 'Ustadzah Fatimah Azzahra, S.Pd.I',
+    category: 'Tahfidz',
     surahOrJilid: 'Surah Al-Ikhlas (Ayat 1-4)',
     type: 'Tahfidz (Hafalan Baru)',
     kelancaranScore: 5,
     makhorijulHurufScore: 4,
     ahkamTajwidScore: 4,
     grade: 'Mumtaz (Istimewa)',
-    teacherNote: 'Masya Allah! Bacaan Rayyan sangat percaya diri dan tartil. Perhatikan huruf Qolqolah pada kata "Ahad" & "As-Shamad" agar lebih mantap membal.',
+    teacherNote: 'Masya Allah! Hafalan Rayyan sangat percaya diri dan tartil. Perhatikan huruf Qolqolah pada kata "Ahad" & "As-Shamad" agar lebih mantap membal.',
+    passed: true
+  },
+  {
+    id: 'hlq-iqro-1',
+    date: todayStr,
+    studentId: 'TK-AM-202401',
+    studentName: 'Muhammad Rayyan Al-Ghifari',
+    className: 'TK A-1',
+    teacherName: 'Ustadzah Fatimah Azzahra, S.Pd.I',
+    category: 'Iqro',
+    iqroJilid: 'Iqro Jilid 2',
+    iqroPage: 'Halaman 14-15',
+    surahOrJilid: 'Iqro Jilid 2 • Halaman 14-15',
+    type: 'Membaca Iqro',
+    kelancaranScore: 5,
+    makhorijulHurufScore: 4,
+    ahkamTajwidScore: 5,
+    grade: 'Mumtaz (Istimewa)',
+    teacherNote: 'Rayyan sudah lancar menyambung huruf berharakat fathah dan membedakan bacaan pendek-panjang. Siap lanjut ke halaman 16.',
     passed: true
   },
   {
@@ -583,13 +858,33 @@ export const INITIAL_HALAQOH_ASSESSMENTS: HalaqohAssessment[] = [
     studentName: 'Aisyah Humaira Khansa',
     className: 'TK A-1',
     teacherName: 'Ustadzah Fatimah Azzahra, S.Pd.I',
+    category: 'Tahfidz',
     surahOrJilid: 'Surah Al-Falaq (Ayat 1-5)',
     type: 'Muroja\'ah (Ulang Hafalan)',
     kelancaranScore: 5,
     makhorijulHurufScore: 5,
     ahkamTajwidScore: 5,
     grade: 'Mumtaz (Istimewa)',
-    teacherNote: 'Alhamdulillah, hafalan sangat fasih dan mahraj huruf ha (ح) dan ' + 'ayn (ع) sangat jelas. Siap lanjut ke Surah Al-Masad besok!',
+    teacherNote: 'Alhamdulillah, hafalan sangat fasih dan makhraj huruf ha (ح) dan \'ayn (ع) sangat jelas. Siap lanjut ke Surah Al-Masad besok!',
+    passed: true
+  },
+  {
+    id: 'hlq-iqro-2',
+    date: todayStr,
+    studentId: 'TK-AM-202402',
+    studentName: 'Aisyah Humaira Khansa',
+    className: 'TK A-1',
+    teacherName: 'Ustadzah Fatimah Azzahra, S.Pd.I',
+    category: 'Iqro',
+    iqroJilid: 'Iqro Jilid 3',
+    iqroPage: 'Halaman 8-9',
+    surahOrJilid: 'Iqro Jilid 3 • Halaman 8-9',
+    type: 'Membaca Iqro',
+    kelancaranScore: 5,
+    makhorijulHurufScore: 5,
+    ahkamTajwidScore: 4,
+    grade: 'Mumtaz (Istimewa)',
+    teacherNote: 'Bacaan kasroh dan mad thabi\'i ya sukun sudah sangat teliti dan tidak tergesa-gesa. Lanjut halaman 10!',
     passed: true
   },
   {
@@ -599,6 +894,7 @@ export const INITIAL_HALAQOH_ASSESSMENTS: HalaqohAssessment[] = [
     studentName: 'Fathir Zaidan Al-Farizi',
     className: 'TK A-1',
     teacherName: 'Ustadzah Fatimah Azzahra, S.Pd.I',
+    category: 'Tahfidz',
     surahOrJilid: 'Surah An-Nas (Ayat 1-6)',
     type: 'Muroja\'ah (Ulang Hafalan)',
     kelancaranScore: 4,
@@ -609,12 +905,32 @@ export const INITIAL_HALAQOH_ASSESSMENTS: HalaqohAssessment[] = [
     passed: true
   },
   {
+    id: 'hlq-iqro-3',
+    date: todayStr,
+    studentId: 'TK-AM-202403',
+    studentName: 'Fathir Zaidan Al-Farizi',
+    className: 'TK A-1',
+    teacherName: 'Ustadzah Fatimah Azzahra, S.Pd.I',
+    category: 'Iqro',
+    iqroJilid: 'Iqro Jilid 1',
+    iqroPage: 'Halaman 24-25',
+    surahOrJilid: 'Iqro Jilid 1 • Halaman 24-25',
+    type: 'Membaca Iqro',
+    kelancaranScore: 4,
+    makhorijulHurufScore: 4,
+    ahkamTajwidScore: 4,
+    grade: 'Jayyid Jiddan (Sangat Baik)',
+    teacherNote: 'Sudah mengenal huruf hijaiyah terpisah dengan baik. Perlu sedikit latihan membedakan huruf tsa (ث) dan sya (ش).',
+    passed: true
+  },
+  {
     id: 'hlq-4',
     date: todayStr,
     studentId: 'TK-AM-202405',
     studentName: 'Kenzo Althafandra Pratama',
     className: 'TK B-1',
     teacherName: 'Ustadz Ahmad Fauzi, S.Q',
+    category: 'Tahfidz',
     surahOrJilid: 'Surah At-Takatsur (Ayat 1-8)',
     type: 'Tahfidz (Hafalan Baru)',
     kelancaranScore: 5,
@@ -622,6 +938,25 @@ export const INITIAL_HALAQOH_ASSESSMENTS: HalaqohAssessment[] = [
     ahkamTajwidScore: 4,
     grade: 'Jayyid Jiddan (Sangat Baik)',
     teacherNote: 'Alhamdulillah target juz 30 berjalan luar biasa! Suara lantang dan tajwid rapi.',
+    passed: true
+  },
+  {
+    id: 'hlq-iqro-4',
+    date: todayStr,
+    studentId: 'TK-AM-202405',
+    studentName: 'Kenzo Althafandra Pratama',
+    className: 'TK B-1',
+    teacherName: 'Ustadz Ahmad Fauzi, S.Q',
+    category: 'Iqro',
+    iqroJilid: 'Iqro Jilid 4',
+    iqroPage: 'Halaman 12-13',
+    surahOrJilid: 'Iqro Jilid 4 • Halaman 12-13',
+    type: 'Membaca Iqro',
+    kelancaranScore: 5,
+    makhorijulHurufScore: 4,
+    ahkamTajwidScore: 4,
+    grade: 'Jayyid Jiddan (Sangat Baik)',
+    teacherNote: 'Lancar membaca tanwin dan qolqolah pada Iqro Jilid 4. Pertahankan ketenangan tempo membaca.',
     passed: true
   }
 ];

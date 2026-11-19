@@ -23,10 +23,42 @@ import {
   CheckCircle,
   XCircle,
   FileCheck,
-  Briefcase
+  Briefcase,
+  BarChart3,
+  FileSpreadsheet
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { LeaveType, LeaveRequest, StaffPosition, STAFF_POSITIONS } from '../../types';
+import { LeaveType, LeaveRequest, StaffPosition, STAFF_POSITIONS, TeacherAttendanceRecord } from '../../types';
+import {
+  exportDailyTeacherAttendancePDF,
+  exportMonthlyTeacherAttendancePDF
+} from '../../services/pdfService';
+import {
+  exportDailyTeacherAttendanceExcel,
+  exportMonthlyTeacherAttendanceExcel
+} from '../../services/excelService';
+
+const INDONESIAN_MONTHS_SHORT = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember'
+];
+
+const formatMonthName = (ym: string) => {
+  const [y, m] = ym.split('-');
+  const idx = Number(m) - 1;
+  if (!y || isNaN(idx) || idx < 0 || idx > 11) return ym;
+  return `${INDONESIAN_MONTHS_SHORT[idx]} ${y}`;
+};
 
 export const TeacherSelfieAttendance: React.FC = () => {
   const {
@@ -37,6 +69,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
     staff,
     teacherAttendance,
     recordTeacherAttendance,
+    upsertTeacherAttendance,
     leaveRequests,
     submitLeaveRequest,
     approveLeaveRequest,
@@ -44,11 +77,37 @@ export const TeacherSelfieAttendance: React.FC = () => {
     deleteLeaveRequest,
     isPrincipal,
     isAccountOwner,
-    canEditSchoolData
+    canEditSchoolData,
+    canManageMasterData
   } = useApp();
 
+  const todayDateStr = new Date().toISOString().split('T')[0];
+
   // Active Main SubTab
-  const [activeSubTab, setActiveSubTab] = useState<'attendance' | 'leaves'>('attendance');
+  const [activeSubTab, setActiveSubTab] = useState<'attendance' | 'leaves' | 'recap'>('attendance');
+
+  // Recap SubTab States
+  const [recapMode, setRecapMode] = useState<'daily' | 'monthly'>('daily');
+  const [recapCategory, setRecapCategory] = useState<'all' | 'teacher' | 'staff'>('all');
+  const [recapDate, setRecapDate] = useState<string>(todayDateStr);
+  const [recapMonthKey, setRecapMonthKey] = useState<string>(todayDateStr.slice(0, 7));
+
+  const todayTeacherRecords = teacherAttendance.filter((r) => r.date === todayDateStr);
+
+  const recapMonthOptions = React.useMemo(() => {
+    const keys = new Set<string>();
+    const now = new Date();
+    for (let i = 0; i < 6; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      keys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+    teacherAttendance.forEach((r) => {
+      if (r.date && r.date.length >= 7) keys.add(r.date.slice(0, 7));
+    });
+    return Array.from(keys)
+      .sort((a, b) => b.localeCompare(a))
+      .map((key) => ({ key, label: formatMonthName(key) }));
+  }, [teacherAttendance]);
 
   // Combined Teacher & Staff selection for attendance
   const [selectedPersonType, setSelectedPersonType] = useState<'teacher' | 'staff'>('teacher');
@@ -63,6 +122,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
   const [cameraActive, setCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string>('');
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
+  const [selfieFeedback, setSelfieFeedback] = useState<string | null>(null);
   const [notes, setNotes] = useState<string>('Piket pagi & mengajar kelas sentra');
 
   // GPS state
@@ -191,19 +251,23 @@ export const TeacherSelfieAttendance: React.FC = () => {
     if (videoRef.current && canvasRef.current) {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      canvas.width = video.videoWidth || 480;
-      canvas.height = video.videoHeight || 360;
+      const srcW = video.videoWidth || 480;
+      const srcH = video.videoHeight || 360;
+      const maxDim = 480;
+      const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
+      canvas.width = Math.max(1, Math.round(srcW * scale));
+      canvas.height = Math.max(1, Math.round(srcH * scale));
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         // Add watermark timestamp
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-        ctx.fillRect(10, canvas.height - 35, canvas.width - 20, 25);
+        ctx.fillRect(10, canvas.height - 32, canvas.width - 20, 22);
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 12px sans-serif';
-        ctx.fillText(`TK AL MISHBAH | ${new Date().toLocaleString('id-ID')}`, 20, canvas.height - 18);
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText(`TK AL MISHBAH | ${new Date().toLocaleString('id-ID')}`, 16, canvas.height - 17);
 
-        const dataUrl = canvas.toDataURL('image/jpeg');
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
         setCapturedPhoto(dataUrl);
       }
     }
@@ -221,10 +285,11 @@ export const TeacherSelfieAttendance: React.FC = () => {
 
   const handlePresensiSubmit = () => {
     if (!capturedPhoto) {
-      alert('Silakan ambil foto selfie presensi terlebih dahulu.');
+      setSelfieFeedback('Silakan ambil foto selfie presensi terlebih dahulu.');
       return;
     }
 
+    setSelfieFeedback(null);
     recordTeacherAttendance(selectedPersonId, capturedPhoto, locationData, notes);
     confetti({
       particleCount: 50,
@@ -247,6 +312,8 @@ export const TeacherSelfieAttendance: React.FC = () => {
   // ===================== LEAVE MANAGEMENT STATE =====================
   const [leaveStatusFilter, setLeaveStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
+  const [applyFormError, setApplyFormError] = useState<string | null>(null);
+  const [confirmDeleteLeaveId, setConfirmDeleteLeaveId] = useState<string | null>(null);
   const [previewAttachmentUrl, setPreviewAttachmentUrl] = useState<string | null>(null);
 
   // Review (ACC / Reject) State
@@ -296,6 +363,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
       reason: '',
       doctorLetterUrl: ''
     });
+    setApplyFormError(null);
     setIsApplyModalOpen(true);
   };
 
@@ -310,9 +378,10 @@ export const TeacherSelfieAttendance: React.FC = () => {
   const handleSubmitNewLeave = (e: React.FormEvent) => {
     e.preventDefault();
     if (!applyForm.reason.trim()) {
-      alert('Silakan tuliskan alasan izin atau cuti.');
+      setApplyFormError('Silakan tuliskan alasan izin atau cuti.');
       return;
     }
+    setApplyFormError(null);
 
     let applicantName = currentUser.name;
     let applicantPosition: StaffPosition = 'Guru';
@@ -387,10 +456,10 @@ export const TeacherSelfieAttendance: React.FC = () => {
         </div>
 
         {/* Tab Switcher in Banner */}
-        <div className="flex items-center bg-black/25 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 gap-1.5 shrink-0">
+        <div className="flex flex-wrap items-center bg-black/25 backdrop-blur-md p-1.5 rounded-2xl border border-white/15 gap-1.5 shrink-0">
           <button
             onClick={() => setActiveSubTab('attendance')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeSubTab === 'attendance'
                 ? 'bg-emerald-600 text-white shadow-md'
                 : 'text-emerald-100 hover:bg-white/10'
@@ -400,15 +469,26 @@ export const TeacherSelfieAttendance: React.FC = () => {
             <span>Presensi Selfie & GPS</span>
           </button>
           <button
+            onClick={() => setActiveSubTab('recap')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeSubTab === 'recap'
+                ? 'bg-teal-500 text-slate-950 font-extrabold shadow-md'
+                : 'text-emerald-100 hover:bg-white/10'
+            }`}
+          >
+            <BarChart3 className="w-4 h-4" />
+            <span>Data Harian & Bulanan</span>
+          </button>
+          <button
             onClick={() => setActiveSubTab('leaves')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
               activeSubTab === 'leaves'
                 ? 'bg-amber-500 text-slate-950 font-extrabold shadow-md'
                 : 'text-emerald-100 hover:bg-white/10'
             }`}
           >
             <FileCheck className="w-4 h-4" />
-            <span>Izin & Cuti (ACC Kepsek)</span>
+            <span>Izin & Cuti (ACC Pemilik)</span>
             {pendingLeavesCount > 0 && (
               <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white font-black text-[10px] animate-pulse">
                 {pendingLeavesCount}
@@ -538,6 +618,13 @@ export const TeacherSelfieAttendance: React.FC = () => {
               )}
             </div>
 
+            {selfieFeedback && (
+              <div className="mt-3 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{selfieFeedback}</span>
+              </div>
+            )}
+
             {/* Camera Controls */}
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -651,108 +738,567 @@ export const TeacherSelfieAttendance: React.FC = () => {
 
             {/* Today's Attendance List */}
             <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200">
-              <h4 className="font-bold text-slate-800 text-sm mb-3 flex items-center justify-between">
-                <span className="flex items-center gap-2">
+              <div className="flex items-center justify-between mb-3 gap-2">
+                <h4 className="font-bold text-slate-800 text-sm flex items-center gap-2">
                   <Calendar className="w-4 h-4 text-emerald-600" />
-                  Presensi Guru & Karyawan Hari Ini
-                </span>
+                  Presensi Hari Ini ({todayDateStr})
+                </h4>
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                  {teacherAttendance.length} Tercatat
+                  {todayTeacherRecords.length} Tercatat
                 </span>
-              </h4>
+              </div>
 
               <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-                {teacherAttendance.map((rec) => {
-                  const isApprovedLeave = rec.status === 'Sakit' || rec.status === 'Izin' || rec.status === 'Cuti';
-                  return (
-                    <div
-                      key={rec.id}
-                      className="p-3 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-                    >
-                      <img
-                        src={rec.selfieUrl}
-                        alt={rec.teacherName}
-                        className="w-12 h-12 rounded-xl object-cover border border-emerald-300 shrink-0 bg-white"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-1">
-                          <h5 className="text-xs font-bold text-slate-800 truncate">
-                            {rec.teacherName}
-                          </h5>
-                          <span className="text-[10px] font-mono text-slate-500 shrink-0">
-                            {rec.time} WIB
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 mt-1">
-                          <span
-                            className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${
-                              rec.status === 'Hadir Tepat Waktu'
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : rec.status === 'Terlambat'
-                                ? 'bg-amber-100 text-amber-800'
-                                : rec.status === 'Sakit'
-                                ? 'bg-rose-100 text-rose-800'
-                                : rec.status === 'Cuti'
-                                ? 'bg-purple-100 text-purple-800'
-                                : 'bg-blue-100 text-blue-800'
-                            }`}
-                          >
-                            {rec.status}
-                          </span>
-                          <span className="text-[10px] text-slate-500 truncate">
-                            {rec.notes || 'Hadir'}
-                          </span>
-                        </div>
-                        {isApprovedLeave ? (
-                          <div className="text-[9px] text-emerald-600 mt-0.5 flex items-center gap-1 font-bold">
-                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                            <span>ACC Resmi Kepala Sekolah</span>
+                {todayTeacherRecords.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-slate-400">
+                    Belum ada catatan presensi guru pada hari ini.
+                  </div>
+                ) : (
+                  todayTeacherRecords.map((rec) => {
+                    const isApprovedLeave = rec.status === 'Sakit' || rec.status === 'Izin' || rec.status === 'Cuti';
+                    return (
+                      <div
+                        key={rec.id}
+                        className="p-3 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                      >
+                        <img
+                          src={rec.selfieUrl}
+                          alt={rec.teacherName}
+                          className="w-12 h-12 rounded-xl object-cover border border-emerald-300 shrink-0 bg-white"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <h5 className="text-xs font-bold text-slate-800 truncate">
+                              {rec.teacherName}
+                            </h5>
+                            <span className="text-[10px] font-mono text-slate-500 shrink-0">
+                              {rec.time} WIB
+                            </span>
                           </div>
-                        ) : (
-                          <div className="text-[9px] text-slate-400 mt-0.5 flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-emerald-500" />
-                            <span>{rec.location?.distanceMeters}m dari gerbang</span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span
+                              className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${
+                                rec.status === 'Hadir Tepat Waktu'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : rec.status === 'Terlambat'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : rec.status === 'Sakit'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : rec.status === 'Cuti'
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}
+                            >
+                              {rec.status}
+                            </span>
+                            <span className="text-[10px] text-slate-500 truncate">
+                              {rec.notes || 'Hadir'}
+                            </span>
                           </div>
-                        )}
+                          {isApprovedLeave ? (
+                            <div className="text-[9px] text-emerald-600 mt-0.5 flex items-center gap-1 font-bold">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              <span>ACC Resmi Kepala Sekolah</span>
+                            </div>
+                          ) : (
+                            <div className="text-[9px] text-slate-400 mt-0.5 flex items-center gap-1">
+                              <MapPin className="w-3 h-3 text-emerald-500" />
+                              <span>{rec.location?.distanceMeters}m dari gerbang</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
               </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveSubTab('recap')}
+                className="mt-4 w-full py-2 px-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <BarChart3 className="w-4 h-4 text-emerald-600" />
+                <span>Lihat Rekap Absensi Harian & Bulanan →</span>
+              </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* ======================= TAB 3: REKAP ABSENSI GURU & KARYAWAN HARIAN & BULANAN ======================= */}
+      {activeSubTab === 'recap' && (() => {
+        const activeTeachers = recapCategory === 'staff' ? [] : teachers;
+        const activeStaff = recapCategory === 'teacher' ? [] : staff;
+        const activeCategoryLabel =
+          recapCategory === 'teacher'
+            ? 'Guru'
+            : recapCategory === 'staff'
+            ? 'Karyawan'
+            : 'Guru & Karyawan';
+
+        const personnel = [
+          ...activeTeachers.map((t) => ({
+            id: t.id,
+            code: t.nuptk || t.id,
+            name: t.name,
+            category: 'Guru' as const,
+            roleLabel: t.assignedDuty || t.position,
+            photoUrl: t.photoUrl
+          })),
+          ...activeStaff.map((s) => ({
+            id: s.id,
+            code: s.nip || s.id,
+            name: s.name,
+            category: 'Karyawan' as const,
+            roleLabel: `${s.position} (${s.department})`,
+            photoUrl: s.photoUrl
+          }))
+        ];
+
+        const personnelIds = new Set(personnel.map((p) => p.id));
+        const dayRecords = teacherAttendance.filter(
+          (r) => r.date === recapDate && personnelIds.has(r.teacherId)
+        );
+        const monthRecords = teacherAttendance.filter(
+          (r) => r.date.startsWith(recapMonthKey) && personnelIds.has(r.teacherId)
+        );
+        const activeDaysInMonth = new Set(monthRecords.map((r) => r.date)).size;
+        const recapMonthLabel = formatMonthName(recapMonthKey);
+
+        const tepatHari = dayRecords.filter((r) => r.status === 'Hadir Tepat Waktu').length;
+        const telatHari = dayRecords.filter((r) => r.status === 'Terlambat').length;
+        const izinSakitCutiHari = dayRecords.filter(
+          (r) => r.status === 'Izin' || r.status === 'Sakit' || r.status === 'Cuti'
+        ).length;
+        const recordedHari = personnel.filter((p) =>
+          dayRecords.some((r) => r.teacherId === p.id)
+        ).length;
+        const belumHari = Math.max(0, personnel.length - recordedHari);
+
+        return (
+          <div className="bg-white rounded-3xl p-6 shadow-xs border border-slate-200 space-y-5">
+            {/* Controls Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-4 border-b border-slate-100">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => setRecapMode('daily')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      recapMode === 'daily'
+                        ? 'bg-white text-emerald-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Calendar className="w-4 h-4 text-emerald-600" />
+                    Laporan Harian
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecapMode('monthly')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                      recapMode === 'monthly'
+                        ? 'bg-white text-emerald-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4 text-emerald-600" />
+                    Laporan Bulanan
+                  </button>
+                </div>
+
+                {/* Category filter */}
+                <div className="flex items-center gap-1 bg-emerald-50 p-1 rounded-2xl border border-emerald-200">
+                  <button
+                    type="button"
+                    onClick={() => setRecapCategory('all')}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${
+                      recapCategory === 'all'
+                        ? 'bg-emerald-700 text-white'
+                        : 'text-emerald-800 hover:bg-emerald-100'
+                    }`}
+                  >
+                    Semua ({teachers.length + staff.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecapCategory('teacher')}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${
+                      recapCategory === 'teacher'
+                        ? 'bg-emerald-700 text-white'
+                        : 'text-emerald-800 hover:bg-emerald-100'
+                    }`}
+                  >
+                    Guru ({teachers.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecapCategory('staff')}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold cursor-pointer ${
+                      recapCategory === 'staff'
+                        ? 'bg-sky-700 text-white'
+                        : 'text-emerald-800 hover:bg-emerald-100'
+                    }`}
+                  >
+                    Karyawan ({staff.length})
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {recapMode === 'daily' ? (
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
+                    <Calendar className="w-4 h-4 text-slate-400" />
+                    <input
+                      type="date"
+                      value={recapDate}
+                      onChange={(e) => setRecapDate(e.target.value)}
+                      className="bg-transparent font-bold text-slate-700 focus:outline-none"
+                    />
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
+                    <Calendar className="w-4 h-4 text-slate-400" />
+                    <select
+                      value={recapMonthKey}
+                      onChange={(e) => setRecapMonthKey(e.target.value)}
+                      className="bg-transparent font-bold text-slate-700 focus:outline-none"
+                    >
+                      {recapMonthOptions.map((m) => (
+                        <option key={m.key} value={m.key}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    recapMode === 'daily'
+                      ? exportDailyTeacherAttendancePDF(
+                          recapDate,
+                          teacherAttendance,
+                          activeTeachers,
+                          activeStaff,
+                          activeCategoryLabel
+                        )
+                      : exportMonthlyTeacherAttendancePDF(
+                          recapMonthLabel,
+                          recapMonthKey,
+                          activeTeachers,
+                          teacherAttendance,
+                          activeStaff,
+                          activeCategoryLabel
+                        )
+                  }
+                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  Unduh PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    recapMode === 'daily'
+                      ? exportDailyTeacherAttendanceExcel(
+                          recapDate,
+                          teacherAttendance,
+                          activeTeachers,
+                          activeStaff,
+                          activeCategoryLabel
+                        )
+                      : exportMonthlyTeacherAttendanceExcel(
+                          recapMonthLabel,
+                          recapMonthKey,
+                          activeTeachers,
+                          teacherAttendance,
+                          activeStaff,
+                          activeCategoryLabel
+                        )
+                  }
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center gap-1.5 cursor-pointer"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  Unduh Excel
+                </button>
+              </div>
+            </div>
+
+            {recapMode === 'daily' ? (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-center">
+                    <span className="text-[10px] font-bold uppercase text-emerald-700 block">
+                      Tepat Waktu
+                    </span>
+                    <span className="text-xl font-black text-emerald-950">{tepatHari}</span>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-center">
+                    <span className="text-[10px] font-bold uppercase text-amber-700 block">
+                      Terlambat
+                    </span>
+                    <span className="text-xl font-black text-amber-950">{telatHari}</span>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-blue-50 border border-blue-200 text-center">
+                    <span className="text-[10px] font-bold uppercase text-blue-700 block">
+                      Izin / Sakit / Cuti
+                    </span>
+                    <span className="text-xl font-black text-blue-950">{izinSakitCutiHari}</span>
+                  </div>
+                  <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-center">
+                    <span className="text-[10px] font-bold uppercase text-rose-700 block">
+                      Belum Presensi
+                    </span>
+                    <span className="text-xl font-black text-rose-950">{belumHari}</span>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                      <tr>
+                        <th className="py-3 px-4">No</th>
+                        <th className="py-3 px-4">Pegawai</th>
+                        <th className="py-3 px-4">Kategori</th>
+                        <th className="py-3 px-4">Jabatan / Unit</th>
+                        <th className="py-3 px-4">Jam Masuk</th>
+                        <th className="py-3 px-4">Status</th>
+                        <th className="py-3 px-4">Keterangan</th>
+                        {canManageMasterData && <th className="py-3 px-4 text-right">Ubah Status</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {personnel.map((person, idx) => {
+                        const rec = dayRecords.find((r) => r.teacherId === person.id);
+                        return (
+                          <tr key={person.id} className="hover:bg-slate-50/70">
+                            <td className="py-3 px-4 font-mono text-slate-400">{idx + 1}</td>
+                            <td className="py-3 px-4">
+                              <div className="flex items-center gap-2.5">
+                                <img
+                                  src={rec?.selfieUrl || person.photoUrl}
+                                  alt={person.name}
+                                  className="w-8 h-8 rounded-full object-cover border border-emerald-200 shrink-0"
+                                />
+                                <div>
+                                  <div className="font-bold text-slate-800">{person.name}</div>
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    {person.code}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                                  person.category === 'Guru'
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : 'bg-sky-50 text-sky-800 border border-sky-200'
+                                }`}
+                              >
+                                {person.category}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-700 font-medium">
+                              {person.roleLabel}
+                            </td>
+                            <td className="py-3 px-4 font-mono text-slate-600">
+                              {rec ? `${rec.time} WIB` : '-'}
+                            </td>
+                            <td className="py-3 px-4">
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                                  !rec
+                                    ? 'bg-slate-100 text-slate-600'
+                                    : rec.status === 'Hadir Tepat Waktu'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : rec.status === 'Terlambat'
+                                    ? 'bg-amber-100 text-amber-800'
+                                    : rec.status === 'Sakit'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : rec.status === 'Cuti'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : 'bg-blue-100 text-blue-800'
+                                }`}
+                              >
+                                {rec ? rec.status : 'Belum Presensi'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-500 max-w-xs truncate">
+                              {rec?.notes || '-'}
+                            </td>
+                            {canManageMasterData && (
+                              <td className="py-3 px-4 text-right">
+                                <select
+                                  value={rec?.status || ''}
+                                  onChange={(e) => {
+                                    const val = e.target.value as TeacherAttendanceRecord['status'];
+                                    if (!val) return;
+                                    upsertTeacherAttendance(person.id, recapDate, val);
+                                  }}
+                                  className="text-[11px] font-bold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-slate-700 focus:outline-emerald-600"
+                                >
+                                  <option value="">-- Catat --</option>
+                                  <option value="Hadir Tepat Waktu">Hadir Tepat Waktu</option>
+                                  <option value="Terlambat">Terlambat</option>
+                                  <option value="Izin">Izin</option>
+                                  <option value="Sakit">Sakit</option>
+                                  <option value="Cuti">Cuti</option>
+                                </select>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-emerald-50/70 border border-emerald-200 p-3.5 rounded-2xl text-xs">
+                  <span className="font-bold text-emerald-950">
+                    Rekapitulasi Kehadiran {activeCategoryLabel} Periode {recapMonthLabel}
+                  </span>
+                  <span className="font-mono font-bold text-emerald-800">
+                    {activeDaysInMonth} Hari Kerja Tercatat • {personnel.length} Pegawai
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-b border-slate-200">
+                      <tr>
+                        <th className="py-3 px-3 text-center">No</th>
+                        <th className="py-3 px-4">Nama Pegawai</th>
+                        <th className="py-3 px-3">Kategori</th>
+                        <th className="py-3 px-4">Jabatan / Unit</th>
+                        <th className="py-3 px-3 text-center">Tepat Waktu</th>
+                        <th className="py-3 px-3 text-center">Terlambat</th>
+                        <th className="py-3 px-3 text-center">Izin</th>
+                        <th className="py-3 px-3 text-center">Sakit</th>
+                        <th className="py-3 px-3 text-center">Cuti</th>
+                        <th className="py-3 px-3 text-center">Total Hari</th>
+                        <th className="py-3 px-3 text-center">% Hadir</th>
+                        <th className="py-3 px-4 text-center">Predikat</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {personnel.map((person, idx) => {
+                        const recs = monthRecords.filter((r) => r.teacherId === person.id);
+                        const tepat = recs.filter((r) => r.status === 'Hadir Tepat Waktu').length;
+                        const telat = recs.filter((r) => r.status === 'Terlambat').length;
+                        const izin = recs.filter((r) => r.status === 'Izin').length;
+                        const sakit = recs.filter((r) => r.status === 'Sakit').length;
+                        const cuti = recs.filter((r) => r.status === 'Cuti').length;
+                        const denom = Math.max(activeDaysInMonth, recs.length, 1);
+                        const pct = Math.min(100, Math.round(((tepat + telat) / denom) * 100));
+
+                        return (
+                          <tr key={person.id} className="hover:bg-slate-50/70">
+                            <td className="py-3 px-3 text-center font-mono text-slate-400">
+                              {idx + 1}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="font-bold text-slate-800">{person.name}</div>
+                              <div className="text-[10px] text-slate-400 font-mono">
+                                {person.code}
+                              </div>
+                            </td>
+                            <td className="py-3 px-3">
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                                  person.category === 'Guru'
+                                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                                    : 'bg-sky-50 text-sky-800 border border-sky-200'
+                                }`}
+                              >
+                                {person.category}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-slate-700 font-medium">
+                              {person.roleLabel}
+                            </td>
+                            <td className="py-3 px-3 text-center font-bold text-emerald-700">
+                              {tepat}
+                            </td>
+                            <td className="py-3 px-3 text-center font-bold text-amber-600">
+                              {telat}
+                            </td>
+                            <td className="py-3 px-3 text-center font-semibold text-blue-600">
+                              {izin}
+                            </td>
+                            <td className="py-3 px-3 text-center font-semibold text-rose-600">
+                              {sakit}
+                            </td>
+                            <td className="py-3 px-3 text-center font-semibold text-purple-600">
+                              {cuti}
+                            </td>
+                            <td className="py-3 px-3 text-center font-mono font-bold text-slate-700">
+                              {recs.length}
+                            </td>
+                            <td className="py-3 px-3 text-center font-black text-emerald-900">
+                              {pct}%
+                            </td>
+                            <td className="py-3 px-4 text-center">
+                              <span
+                                className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                                  pct >= 90
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : pct >= 75
+                                    ? 'bg-blue-100 text-blue-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                {pct >= 90
+                                  ? 'Teladan'
+                                  : pct >= 75
+                                  ? 'Baik'
+                                  : 'Perlu Pembinaan'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ======================= TAB 2: LEAVE & PERMITS (ACC KEPALA SEKOLAH) ======================= */}
       {activeSubTab === 'leaves' && (
         <div className="space-y-6">
           {/* Authority Banner */}
           <div className={`p-4 rounded-3xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
-            isPrincipal || isAccountOwner
+            isAccountOwner
               ? 'bg-purple-50 border-purple-200 text-purple-950'
               : 'bg-emerald-50 border-emerald-200 text-emerald-950'
           }`}>
             <div className="flex items-start gap-3">
               <span className={`p-2 rounded-2xl shrink-0 ${
-                isPrincipal || isAccountOwner ? 'bg-purple-600 text-white' : 'bg-emerald-600 text-white'
+                isAccountOwner ? 'bg-purple-600 text-white' : 'bg-emerald-600 text-white'
               }`}>
-                {isPrincipal || isAccountOwner ? <ShieldCheck className="w-6 h-6" /> : <FileCheck className="w-6 h-6" />}
+                {isAccountOwner ? <ShieldCheck className="w-6 h-6" /> : <FileCheck className="w-6 h-6" />}
               </span>
               <div>
                 <div className="font-extrabold text-sm flex items-center gap-2">
                   <span>
-                    {isPrincipal
-                      ? '👑 Anda Berperan sebagai Kepala Sekolah (Hj. Siti Khadijah, M.Pd.I)'
-                      : isAccountOwner
-                      ? '👑 Anda Berperan sebagai Pemilik Akun / Yayasan (Drs. H. Abdullah Mansyur)'
-                      : 'ℹ️ Sistem Perizinan Guru & Karyawan — Wajib ACC Kepala Sekolah'}
+                    {isAccountOwner
+                      ? `👑 Pemilik Akun (${currentUser.name}) — Otoritas ACC & Edit Status`
+                      : 'ℹ️ Sistem Perizinan Guru & Karyawan — Wajib ACC Pemilik Akun'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-600 mt-0.5 max-w-2xl">
-                  {isPrincipal || isAccountOwner
-                    ? 'Anda memiliki hak penuh untuk meninjau surat dokter/bukti, memberikan ACC (Persetujuan Resmi), atau menolak permohonan izin/cuti guru & karyawan. Begitu di-ACC, status otomatis tersinkron ke buku presensi harian.'
-                    : 'Guru dan staf dapat mengajukan surat izin sakit, cuti, atau dinas. Seluruh permohonan harus di-ACC (disetujui resmi) oleh Kepala Sekolah agar sah dan tercatat di presensi.'}
+                  {isAccountOwner
+                    ? 'Hanya Pemilik Akun yang berwenang meninjau bukti, memberikan ACC (Persetujuan Resmi), menolak, atau menghapus pengajuan izin/cuti guru & karyawan.'
+                    : 'Guru, Kepala Sekolah, dan Staf dapat mengajukan surat izin sakit, cuti, atau dinas. Seluruh perubahan status & ACC dilakukan oleh Pemilik Akun.'}
                 </p>
               </div>
             </div>
@@ -959,20 +1505,38 @@ export const TeacherSelfieAttendance: React.FC = () => {
 
                   {/* Actions Footer */}
                   <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
-                    {/* Delete for authority */}
+                    {/* Delete for owner only */}
                     {canEditSchoolData ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`Hapus berkas perizinan atas nama ${leave.applicantName}?`)) {
-                            deleteLeaveRequest(leave.id);
-                          }
-                        }}
-                        className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg text-xs"
-                        title="Hapus Arsip Permohonan"
-                      >
-                        Hapus
-                      </button>
+                      confirmDeleteLeaveId === leave.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              deleteLeaveRequest(leave.id);
+                              setConfirmDeleteLeaveId(null);
+                            }}
+                            className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] rounded-lg cursor-pointer"
+                          >
+                            Ya, Hapus
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteLeaveId(null)}
+                            className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[11px] rounded-lg cursor-pointer"
+                          >
+                            Batal
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmDeleteLeaveId(leave.id)}
+                          className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg text-xs cursor-pointer"
+                          title="Hapus Arsip Permohonan"
+                        >
+                          Hapus
+                        </button>
+                      )
                     ) : (
                       <div />
                     )}
@@ -980,7 +1544,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
                     {/* Review Actions */}
                     <div className="flex items-center gap-2">
                       {isPending ? (
-                        isPrincipal || isAccountOwner ? (
+                        isAccountOwner ? (
                           <>
                             <button
                               type="button"
@@ -1002,7 +1566,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
                                 setReviewModalData({
                                   leave,
                                   action: 'approve',
-                                  notes: 'Disetujui resmi oleh Kepala Sekolah. Semoga lekas sembuh / urusan lancar.'
+                                  notes: 'Disetujui resmi oleh Pemilik Akun. Semoga lekas sembuh / urusan lancar.'
                                 })
                               }
                               className="px-4 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-xs rounded-xl shadow-xs transition-colors cursor-pointer flex items-center gap-1.5"
@@ -1014,7 +1578,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
                         ) : (
                           <div className="flex items-center gap-1.5 text-[11px] text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl border border-amber-200 font-bold">
                             <Lock className="w-3.5 h-3.5" />
-                            <span>Menunggu ACC Kepala Sekolah</span>
+                            <span>Menunggu ACC Pemilik Akun</span>
                           </div>
                         )
                       ) : (
@@ -1044,7 +1608,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
                   Formulir Pengajuan Izin / Cuti Guru & Karyawan
                 </h3>
                 <p className="text-[11px] text-emerald-100">
-                  Wajib mendapatkan ACC resmi dari Kepala Sekolah sebelum tercatat di presensi.
+                  Wajib mendapatkan ACC resmi dari Pemilik Akun sebelum tercatat di presensi.
                 </p>
               </div>
               <button
@@ -1056,6 +1620,12 @@ export const TeacherSelfieAttendance: React.FC = () => {
             </div>
 
             <form onSubmit={handleSubmitNewLeave} className="p-6 space-y-4 text-xs">
+              {applyFormError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{applyFormError}</span>
+                </div>
+              )}
               {/* Applicant Selector */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
@@ -1230,7 +1800,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
                     : 'Tolak Permohonan Izin'}
                 </h3>
                 <p className="text-[11px] opacity-90">
-                  Penetapan resmi oleh Kepala Sekolah (Hj. Siti Khadijah, M.Pd.I)
+                  Penetapan resmi oleh Pemilik Akun ({currentUser.name})
                 </p>
               </div>
               <button

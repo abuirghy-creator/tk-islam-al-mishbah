@@ -21,6 +21,7 @@ export interface SchoolProfile {
 export interface User {
   id: string;
   username: string;
+  password?: string; // Kata sandi login masing-masing pengguna
   name: string;
   role: UserRole;
   avatarUrl: string;
@@ -165,6 +166,8 @@ export interface TeacherAttendanceRecord {
 
 export type GradeLevel = 'Mumtaz (Istimewa)' | 'Jayyid Jiddan (Sangat Baik)' | 'Jayyid (Baik)' | 'Maqbul (Cukup)';
 
+export type HalaqohCategory = 'Tahfidz' | 'Iqro';
+
 export interface HalaqohAssessment {
   id: string;
   date: string;
@@ -172,8 +175,11 @@ export interface HalaqohAssessment {
   studentName: string;
   className: string;
   teacherName: string;
+  category?: HalaqohCategory;
   surahOrJilid: string; // e.g. "Surah An-Nas ayat 1-6" or "Iqro Jilid 2 Hal 15"
-  type: 'Tahfidz (Hafalan Baru)' | 'Muroja\'ah (Ulang Hafalan)' | 'Tilawati/Iqro';
+  iqroJilid?: string; // e.g. "Iqro Jilid 2"
+  iqroPage?: string; // e.g. "Halaman 14-15"
+  type: 'Tahfidz (Hafalan Baru)' | 'Muroja\'ah (Ulang Hafalan)' | 'Tilawati/Iqro' | 'Membaca Iqro';
   kelancaranScore: number; // 1-5 stars
   makhorijulHurufScore: number; // 1-5 stars
   ahkamTajwidScore: number; // 1-5 stars
@@ -252,3 +258,63 @@ export interface AppNotification {
   read: boolean;
   linkTab?: string;
 }
+
+export interface PublishSummary {
+  studentsCount: number;
+  teachersCount: number;
+  staffCount: number;
+  announcementsCount: number;
+  galleryCount: number;
+}
+
+export interface PublishHistoryEntry {
+  version: number;
+  publishedAt: string;
+  publishedBy: string;
+  note: string;
+  summary: PublishSummary;
+}
+
+export type AutoSaveStatus = 'synced' | 'saving' | 'offline';
+
+export interface RealtimeSyncEvent {
+  version: number;
+  actionLabel: string;
+  savedBy: string;
+  timestamp: string;
+}
+
+export interface PublishMeta {
+  storeId?: string;
+  publishedVersion: number;
+  lastPublishedAt: string | null;
+  publishedBy: string | null;
+  publishNote: string | null;
+  draftVersion: number;
+  lastDraftSavedAt: string | null;
+  draftSavedBy: string | null;
+  lastActionLabel?: string | null;
+  hasPublishedSnapshot: boolean;
+  hasDraftSnapshot: boolean;
+  connectedClients?: number;
+  history: PublishHistoryEntry[];
+}
+
+export interface AppSnapshot {
+  schoolProfile: SchoolProfile;
+  users: User[];
+  students: Student[];
+  teachers: Teacher[];
+  staff: Staff[];
+  halaqohGroups: HalaqohGroupInfo[];
+  studentAttendance: StudentAttendanceRecord[];
+  teacherAttendance: TeacherAttendanceRecord[];
+  halaqohAssessments: HalaqohAssessment[];
+  leaveRequests: LeaveRequest[];
+  sppInvoices: SppInvoice[];
+  chatMessages: ChatMessage[];
+  announcements: Announcement[];
+  gallery: GalleryItem[];
+  notifications: AppNotification[];
+}
+

@@ -20,10 +20,13 @@ import {
   Loader2,
   X,
   CheckCircle2,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw,
+  ExternalLink
 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+const GOOGLE_MAPS_LIBRARIES = ['places', 'marker'];
 
 interface GoogleMapsCoordinatePickerProps {
   lat: number;
@@ -53,14 +56,21 @@ interface SelectedPlaceInfo {
   lng: number;
 }
 
-const MapCoordinatePickerInner: React.FC<GoogleMapsCoordinatePickerProps> = ({
+interface InnerPickerProps extends GoogleMapsCoordinatePickerProps {
+  hasLoadError?: boolean;
+  onRetryLoad?: () => void;
+}
+
+const MapCoordinatePickerInner: React.FC<InnerPickerProps> = ({
   lat,
   lng,
   radiusMeters,
   locationName,
   canEdit,
   onCoordinatesChange,
-  onApplyAddress
+  onApplyAddress,
+  hasLoadError,
+  onRetryLoad
 }) => {
   const map = useMap();
   const placesLib = useMapsLibrary('places');
@@ -319,15 +329,42 @@ const MapCoordinatePickerInner: React.FC<GoogleMapsCoordinatePickerProps> = ({
     setIsInfoOpen(true);
   };
 
-  if (apiStatus === APILoadingStatus.FAILED || apiStatus === APILoadingStatus.AUTH_FAILURE) {
+  if (
+    hasLoadError ||
+    apiStatus === APILoadingStatus.FAILED ||
+    apiStatus === APILoadingStatus.AUTH_FAILURE
+  ) {
     return (
-      <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
-        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-        <div>
-          <div className="font-bold">Peta Google Maps tidak dapat dimuat saat ini.</div>
-          <p className="text-[11px] text-amber-800 mt-0.5">
-            Anda tetap dapat mengubah titik koordinat Latitude dan Longitude secara manual di kolom bawah atau menggunakan tombol GPS perangkat.
-          </p>
+      <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div>
+            <div className="font-bold">Peta Google Maps tidak dapat dimuat saat ini.</div>
+            <p className="text-[11px] text-amber-800 mt-0.5 leading-relaxed">
+              Kemungkinan koneksi internet atau ekstensi browser memblokir skrip peta. Anda tetap dapat mengubah titik koordinat Latitude dan Longitude secara manual di kolom bawah atau menggunakan tombol GPS perangkat.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {onRetryLoad && (
+            <button
+              type="button"
+              onClick={onRetryLoad}
+              className="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-bold rounded-xl flex items-center gap-1.5 cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Muat Ulang Peta</span>
+            </button>
+          )}
+          <a
+            href={`https://www.google.com/maps?q=${encodeURIComponent(`${lat},${lng}`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-xl flex items-center gap-1.5"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Buka di Maps</span>
+          </a>
         </div>
       </div>
     );
@@ -550,6 +587,27 @@ const MapCoordinatePickerInner: React.FC<GoogleMapsCoordinatePickerProps> = ({
 };
 
 export const GoogleMapsCoordinatePicker: React.FC<GoogleMapsCoordinatePickerProps> = (props) => {
+  const [hasLoadError, setHasLoadError] = useState(false);
+  const [reloadCounter, setReloadCounter] = useState(0);
+
+  const handleApiLoad = useCallback(() => {
+    setHasLoadError(false);
+  }, []);
+
+  const handleApiError = useCallback((error: unknown) => {
+    setHasLoadError(true);
+    console.warn('Google Maps script tidak dapat dimuat; menggunakan mode input koordinat manual:', error);
+  }, []);
+
+  const handleRetryLoad = useCallback(() => {
+    if (typeof document !== 'undefined') {
+      const existingScripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
+      existingScripts.forEach((el) => el.remove());
+    }
+    setHasLoadError(false);
+    setReloadCounter((prev) => prev + 1);
+  }, []);
+
   if (!GOOGLE_MAPS_API_KEY) {
     return (
       <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2.5">
@@ -566,12 +624,19 @@ export const GoogleMapsCoordinatePicker: React.FC<GoogleMapsCoordinatePickerProp
 
   return (
     <APIProvider
+      key={reloadCounter}
       apiKey={GOOGLE_MAPS_API_KEY}
-      libraries={['places', 'marker']}
+      libraries={GOOGLE_MAPS_LIBRARIES}
       language="id"
       region="ID"
+      onLoad={handleApiLoad}
+      onError={handleApiError}
     >
-      <MapCoordinatePickerInner {...props} />
+      <MapCoordinatePickerInner
+        {...props}
+        hasLoadError={hasLoadError}
+        onRetryLoad={handleRetryLoad}
+      />
     </APIProvider>
   );
 };

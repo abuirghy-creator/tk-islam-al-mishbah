@@ -158,6 +158,7 @@ export const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [capturedSelfie, setCapturedSelfie] = useState<string | null>(null);
 
   // Sync state on open
@@ -168,6 +169,7 @@ export const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
       setCapturedSelfie(null);
       setFileSizeInfo('');
       setCameraError(null);
+      setPhotoError(null);
     } else {
       stopCamera();
     }
@@ -256,8 +258,9 @@ export const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
 
   // Compress & square crop uploaded image
   const processImageFile = (file: File) => {
+    setPhotoError(null);
     if (!file.type.startsWith('image/')) {
-      alert('Mohon pilih file gambar yang valid (JPG, PNG, WebP).');
+      setPhotoError('Mohon pilih file gambar yang valid (JPG, PNG, WebP).');
       return;
     }
 
@@ -268,8 +271,8 @@ export const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
       img.onload = () => {
         const canvas = document.createElement('canvas');
         const MAX_SIZE = 360;
-        let width = img.width;
-        let height = img.height;
+        const width = img.width;
+        const height = img.height;
 
         // Crop center square
         const minDim = Math.min(width, height);
@@ -291,7 +294,7 @@ export const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
         setIsProcessing(false);
       };
       img.onerror = () => {
-        alert('Gagal membaca gambar. Silakan coba file lain.');
+        setPhotoError('Gagal membaca gambar. Silakan coba file lain.');
         setIsProcessing(false);
       };
       img.src = e.target?.result as string;
@@ -354,7 +357,7 @@ export const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
 
   const handleSave = () => {
     if (!selectedPhoto) {
-      alert('Silakan pilih atau unggah foto terlebih dahulu.');
+      setPhotoError('Silakan pilih atau unggah foto terlebih dahulu.');
       return;
     }
     stopCamera();
@@ -513,6 +516,12 @@ export const PhotoUploadModal: React.FC<PhotoUploadModalProps> = ({
 
         {/* Tab Body */}
         <div className="p-5 max-h-[360px] overflow-y-auto">
+          {photoError && (
+            <div className="mb-3 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{photoError}</span>
+            </div>
+          )}
           {/* TAB 1: UPLOAD FILE */}
           {activeTab === 'upload' && (
             <div className="space-y-4">

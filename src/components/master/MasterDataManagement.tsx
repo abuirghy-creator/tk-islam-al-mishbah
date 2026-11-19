@@ -28,12 +28,17 @@ import {
   CheckSquare,
   Award,
   Lock,
-  ShieldCheck
+  ShieldCheck,
+  KeyRound,
+  Eye,
+  EyeOff,
+  AlertTriangle
 } from 'lucide-react';
 import { StudentCardModal } from '../cards/StudentCardModal';
 import { StudentQrCardGeneratorModal } from './StudentQrCardGeneratorModal';
 import { ExcelImportModal } from './ExcelImportModal';
 import { PhotoUploadModal } from '../common/PhotoUploadModal';
+import { compressImageFile } from '../../utils/imageCompressor';
 import {
   exportStudentsToExcel,
   exportTeachersToExcel,
@@ -49,9 +54,11 @@ export const MasterDataManagement: React.FC = () => {
     addStudent,
     updateStudent,
     deleteStudent,
+    deleteStudentsBatch,
     addTeacher,
     updateTeacher,
     deleteTeacher,
+    deleteTeachersBatch,
     addStaff,
     updateStaff,
     deleteStaff,
@@ -63,12 +70,11 @@ export const MasterDataManagement: React.FC = () => {
     updateHalaqohGroup,
     currentUser,
     users,
-    quickSwitchUser,
     isAccountOwner,
-    isPrincipal,
     canEditSchoolData,
-    canEditRecord,
-    showDemoSwitcher
+    canManageMasterData,
+    getUserForTeacher,
+    getUserForStaff
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'students' | 'halaqoh' | 'teachers' | 'staff'>('students');
@@ -105,6 +111,23 @@ export const MasterDataManagement: React.FC = () => {
 
   const [isStaffModalOpen, setIsStaffModalOpen] = useState(false);
   const [editingStaff, setEditingStaff] = useState<Staff | null>(null);
+
+  // Batch selection & inline feedback & In-app Delete Confirmation Modal
+  const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+  const [selectedTeacherIds, setSelectedTeacherIds] = useState<string[]>([]);
+  const [actionFeedback, setActionFeedback] = useState<{
+    type: 'success' | 'info' | 'error';
+    text: string;
+  } | null>(null);
+  const [teacherFormError, setTeacherFormError] = useState<string | null>(null);
+  const [staffFormError, setStaffFormError] = useState<string | null>(null);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
+    kind: 'student' | 'students-batch' | 'teacher' | 'teachers-batch' | 'staff';
+    id?: string;
+    ids?: string[];
+    title: string;
+    subtitle: string;
+  } | null>(null);
 
   // Student Card Modal
   const [cardPreviewStudent, setCardPreviewStudent] = useState<Student | null>(null);
@@ -180,28 +203,27 @@ export const MasterDataManagement: React.FC = () => {
     setPhotoModalTarget(null);
   };
 
-  const handleDirectFileUpload = (
+  const handleDirectFileUpload = async (
     file: File,
     target: 'student' | 'teacher' | 'staff'
   ) => {
     if (!file) return;
     if (!file.type.startsWith('image/')) {
-      alert('Harap pilih file gambar (JPG, PNG, WebP).');
+      setActionFeedback({ type: 'error', text: 'Harap pilih file gambar (JPG, PNG, WebP).' });
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === 'string') {
-        if (target === 'student') {
-          setStudentForm((prev) => ({ ...prev, photoUrl: reader.result as string }));
-        } else if (target === 'teacher') {
-          setTeacherForm((prev) => ({ ...prev, photoUrl: reader.result as string }));
-        } else if (target === 'staff') {
-          setStaffForm((prev) => ({ ...prev, photoUrl: reader.result as string }));
-        }
+    try {
+      const compressed = await compressImageFile(file, { maxSize: 320, quality: 0.78 });
+      if (target === 'student') {
+        setStudentForm((prev) => ({ ...prev, photoUrl: compressed }));
+      } else if (target === 'teacher') {
+        setTeacherForm((prev) => ({ ...prev, photoUrl: compressed }));
+      } else if (target === 'staff') {
+        setStaffForm((prev) => ({ ...prev, photoUrl: compressed }));
       }
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      setActionFeedback({ type: 'error', text: 'Gagal memproses file gambar. Silakan coba gambar lain.' });
+    }
   };
 
   // Student Form State
@@ -222,6 +244,9 @@ export const MasterDataManagement: React.FC = () => {
   const [selectedTeacherDutyFilter, setSelectedTeacherDutyFilter] = useState<string>('all');
   const [selectedStaffDutyFilter, setSelectedStaffDutyFilter] = useState<string>('all');
 
+  const [showTeacherPassword, setShowTeacherPassword] = useState(false);
+  const [showStaffPassword, setShowStaffPassword] = useState(false);
+
   // Teacher Form State
   const [teacherForm, setTeacherForm] = useState<{
     nuptk: string;
@@ -234,6 +259,8 @@ export const MasterDataManagement: React.FC = () => {
     photoUrl: string;
     status: 'Aktif' | 'Cuti' | 'Izin';
     teachingSubjects: string[];
+    loginUsername: string;
+    loginPassword: string;
   }>({
     nuptk: '',
     name: '',
@@ -244,7 +271,9 @@ export const MasterDataManagement: React.FC = () => {
     email: '',
     photoUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80',
     status: 'Aktif',
-    teachingSubjects: ['Halaqoh Tahfidz', 'Sentra Bahan Alam']
+    teachingSubjects: ['Halaqoh Tahfidz', 'Sentra Bahan Alam'],
+    loginUsername: '',
+    loginPassword: ''
   });
 
   // Staff Form State
@@ -257,6 +286,8 @@ export const MasterDataManagement: React.FC = () => {
     phone: string;
     photoUrl: string;
     status: 'Aktif' | 'Cuti';
+    loginUsername: string;
+    loginPassword: string;
   }>({
     nip: '',
     name: '',
@@ -265,7 +296,9 @@ export const MasterDataManagement: React.FC = () => {
     assignedDuty: 'Staff',
     phone: '',
     photoUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=300&q=80',
-    status: 'Aktif'
+    status: 'Aktif',
+    loginUsername: '',
+    loginPassword: ''
   });
 
   // Open Add/Edit Student
@@ -311,15 +344,26 @@ export const MasterDataManagement: React.FC = () => {
         ...editingStudent,
         ...studentForm
       });
+      setActionFeedback({
+        type: 'success',
+        text: `Data santri ${studentForm.name} berhasil diperbarui.`
+      });
     } else {
       addStudent(studentForm);
+      setActionFeedback({
+        type: 'success',
+        text: `Santri baru ${studentForm.name} berhasil ditambahkan.`
+      });
     }
     setIsStudentModalOpen(false);
   };
 
   // Open Add/Edit Teacher
   const handleOpenTeacherModal = (teacher?: Teacher) => {
+    setShowTeacherPassword(false);
+    setTeacherFormError(null);
     if (teacher) {
+      const linkedUser = getUserForTeacher(teacher.id);
       setEditingTeacher(teacher);
       setTeacherForm({
         nuptk: teacher.nuptk,
@@ -331,7 +375,9 @@ export const MasterDataManagement: React.FC = () => {
         email: teacher.email,
         photoUrl: teacher.photoUrl,
         status: teacher.status,
-        teachingSubjects: teacher.teachingSubjects
+        teachingSubjects: teacher.teachingSubjects,
+        loginUsername: linkedUser?.username || '',
+        loginPassword: ''
       });
     } else {
       setEditingTeacher(null);
@@ -345,7 +391,9 @@ export const MasterDataManagement: React.FC = () => {
         email: 'guru@tk-almishbah.sch.id',
         photoUrl: 'https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?auto=format&fit=crop&w=300&q=80',
         status: 'Aktif',
-        teachingSubjects: ['Sentra Persiapan', 'Tahfidz Al-Quran']
+        teachingSubjects: ['Sentra Persiapan', 'Tahfidz Al-Quran'],
+        loginUsername: '',
+        loginPassword: ''
       });
     }
     setIsTeacherModalOpen(true);
@@ -353,20 +401,51 @@ export const MasterDataManagement: React.FC = () => {
 
   const handleSaveTeacher = (e: React.FormEvent) => {
     e.preventDefault();
+    setTeacherFormError(null);
+    const { loginUsername, loginPassword, ...teacherPayload } = teacherForm;
+    const cleanUsername = loginUsername.trim().toLowerCase().replace(/\s+/g, '.');
+    if (cleanUsername) {
+      const currentLinkedUser = editingTeacher ? getUserForTeacher(editingTeacher.id) : undefined;
+      const duplicate = users.some(
+        (u) => u.id !== currentLinkedUser?.id && u.username.toLowerCase() === cleanUsername
+      );
+      if (duplicate) {
+        setTeacherFormError(`Username "${cleanUsername}" sudah digunakan oleh pegawai lain. Gunakan username yang berbeda.`);
+        return;
+      }
+    }
+
     if (editingTeacher) {
-      updateTeacher({
-        ...editingTeacher,
-        ...teacherForm
+      updateTeacher(
+        {
+          ...editingTeacher,
+          ...teacherPayload
+        },
+        { username: cleanUsername, password: loginPassword }
+      );
+      setActionFeedback({
+        type: 'success',
+        text: `Data pendidik ${teacherPayload.name} berhasil diperbarui.`
       });
     } else {
-      addTeacher(teacherForm);
+      addTeacher(teacherPayload, {
+        username: cleanUsername,
+        password: loginPassword || 'password123'
+      });
+      setActionFeedback({
+        type: 'success',
+        text: `Guru baru ${teacherPayload.name} berhasil ditambahkan.`
+      });
     }
     setIsTeacherModalOpen(false);
   };
 
   // Open Add/Edit Staff
   const handleOpenStaffModal = (staffMember?: Staff) => {
+    setShowStaffPassword(false);
+    setStaffFormError(null);
     if (staffMember) {
+      const linkedUser = getUserForStaff(staffMember.id);
       setEditingStaff(staffMember);
       setStaffForm({
         nip: staffMember.nip,
@@ -376,7 +455,9 @@ export const MasterDataManagement: React.FC = () => {
         assignedDuty: staffMember.assignedDuty || (staffMember.department.includes('Keuangan') || staffMember.department.includes('Keamanan') ? 'Karyawan' : 'Staff'),
         phone: staffMember.phone,
         photoUrl: staffMember.photoUrl,
-        status: staffMember.status
+        status: staffMember.status,
+        loginUsername: linkedUser?.username || '',
+        loginPassword: ''
       });
     } else {
       setEditingStaff(null);
@@ -388,7 +469,9 @@ export const MasterDataManagement: React.FC = () => {
         assignedDuty: 'Staff',
         phone: '0812-',
         photoUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=300&q=80',
-        status: 'Aktif'
+        status: 'Aktif',
+        loginUsername: '',
+        loginPassword: ''
       });
     }
     setIsStaffModalOpen(true);
@@ -396,15 +479,74 @@ export const MasterDataManagement: React.FC = () => {
 
   const handleSaveStaff = (e: React.FormEvent) => {
     e.preventDefault();
+    setStaffFormError(null);
+    const { loginUsername, loginPassword, ...staffPayload } = staffForm;
+    const cleanUsername = loginUsername.trim().toLowerCase().replace(/\s+/g, '.');
+    if (cleanUsername) {
+      const currentLinkedUser = editingStaff ? getUserForStaff(editingStaff.id) : undefined;
+      const duplicate = users.some(
+        (u) => u.id !== currentLinkedUser?.id && u.username.toLowerCase() === cleanUsername
+      );
+      if (duplicate) {
+        setStaffFormError(`Username "${cleanUsername}" sudah digunakan oleh pegawai lain. Gunakan username yang berbeda.`);
+        return;
+      }
+    }
+
     if (editingStaff) {
-      updateStaff({
-        ...editingStaff,
-        ...staffForm
+      updateStaff(
+        {
+          ...editingStaff,
+          ...staffPayload
+        },
+        { username: cleanUsername, password: loginPassword }
+      );
+      setActionFeedback({
+        type: 'success',
+        text: `Data pegawai ${staffPayload.name} berhasil diperbarui.`
       });
     } else {
-      addStaff(staffForm);
+      addStaff(staffPayload, {
+        username: cleanUsername,
+        password: loginPassword || 'password123'
+      });
+      setActionFeedback({
+        type: 'success',
+        text: `Pegawai baru ${staffPayload.name} berhasil ditambahkan.`
+      });
     }
     setIsStaffModalOpen(false);
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteConfirmTarget) return;
+    if (deleteConfirmTarget.kind === 'student' && deleteConfirmTarget.id) {
+      deleteStudent(deleteConfirmTarget.id);
+      setSelectedStudentIds((prev) => prev.filter((id) => id !== deleteConfirmTarget.id));
+      setActionFeedback({ type: 'info', text: `${deleteConfirmTarget.title} berhasil dihapus.` });
+    } else if (deleteConfirmTarget.kind === 'students-batch' && deleteConfirmTarget.ids) {
+      deleteStudentsBatch(deleteConfirmTarget.ids);
+      setSelectedStudentIds([]);
+      setActionFeedback({
+        type: 'info',
+        text: `${deleteConfirmTarget.ids.length} data santri berhasil dihapus.`
+      });
+    } else if (deleteConfirmTarget.kind === 'teacher' && deleteConfirmTarget.id) {
+      deleteTeacher(deleteConfirmTarget.id);
+      setSelectedTeacherIds((prev) => prev.filter((id) => id !== deleteConfirmTarget.id));
+      setActionFeedback({ type: 'info', text: `${deleteConfirmTarget.title} berhasil dihapus.` });
+    } else if (deleteConfirmTarget.kind === 'teachers-batch' && deleteConfirmTarget.ids) {
+      deleteTeachersBatch(deleteConfirmTarget.ids);
+      setSelectedTeacherIds([]);
+      setActionFeedback({
+        type: 'info',
+        text: `${deleteConfirmTarget.ids.length} data guru berhasil dihapus.`
+      });
+    } else if (deleteConfirmTarget.kind === 'staff' && deleteConfirmTarget.id) {
+      deleteStaff(deleteConfirmTarget.id);
+      setActionFeedback({ type: 'info', text: `${deleteConfirmTarget.title} berhasil dihapus.` });
+    }
+    setDeleteConfirmTarget(null);
   };
 
   // Search and multidimensional filtering
@@ -472,7 +614,7 @@ export const MasterDataManagement: React.FC = () => {
         {/* Action Button */}
         {activeTab === 'students' && (
           <div className="flex flex-wrap items-center gap-2">
-            {canEditSchoolData ? (
+            {canManageMasterData ? (
               <button
                 onClick={() => {
                   setExcelTargetType('student');
@@ -488,7 +630,7 @@ export const MasterDataManagement: React.FC = () => {
               <button
                 disabled
                 className="px-3.5 py-2.5 bg-emerald-900/50 text-emerald-300/60 font-bold text-xs rounded-xl border border-emerald-700/50 flex items-center gap-2 cursor-not-allowed"
-                title="Pengeditan dan import Excel santri hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+                title="Pengeditan dan import Excel santri hanya dapat dilakukan oleh pengelola/guru sekolah"
               >
                 <Lock className="w-3.5 h-3.5 text-amber-300/70" />
                 <span>Upload Excel (Terkunci)</span>
@@ -513,7 +655,7 @@ export const MasterDataManagement: React.FC = () => {
               <QrCode className="w-4 h-4 text-amber-300" />
               <span>Cetak Kartu QR</span>
             </button>
-            {canEditSchoolData ? (
+            {canManageMasterData ? (
               <button
                 onClick={() => handleOpenStudentModal()}
                 className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
@@ -524,7 +666,7 @@ export const MasterDataManagement: React.FC = () => {
               <button
                 disabled
                 className="px-3.5 py-2.5 bg-slate-700/40 text-slate-300/60 font-bold text-xs rounded-xl border border-slate-600/40 flex items-center gap-1.5 cursor-not-allowed"
-                title="Tambah santri hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+                title="Tambah santri hanya dapat dilakukan oleh Pemilik Akun"
               >
                 <Lock className="w-3.5 h-3.5" /> Tambah Santri (Terkunci)
               </button>
@@ -534,7 +676,7 @@ export const MasterDataManagement: React.FC = () => {
 
         {activeTab === 'halaqoh' && (
           <div className="flex flex-wrap items-center gap-2">
-            {canEditSchoolData ? (
+            {canManageMasterData ? (
               <button
                 onClick={() => {
                   setExcelTargetType('student');
@@ -550,7 +692,7 @@ export const MasterDataManagement: React.FC = () => {
               <button
                 disabled
                 className="px-3.5 py-2.5 bg-emerald-900/50 text-emerald-300/60 font-bold text-xs rounded-xl border border-emerald-700/50 flex items-center gap-2 cursor-not-allowed"
-                title="Import Excel hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+                title="Import Excel hanya dapat dilakukan oleh Pemilik Akun"
               >
                 <Lock className="w-3.5 h-3.5 text-amber-300/70" />
                 <span>Upload Excel (Terkunci)</span>
@@ -564,7 +706,7 @@ export const MasterDataManagement: React.FC = () => {
               <Download className="w-3.5 h-3.5 text-emerald-300" />
               <span>Ekspor Excel</span>
             </button>
-            {canEditSchoolData ? (
+            {canManageMasterData ? (
               <button
                 onClick={() => {
                   setEditingHalaqoh(null);
@@ -589,7 +731,7 @@ export const MasterDataManagement: React.FC = () => {
               <button
                 disabled
                 className="px-3.5 py-2.5 bg-slate-700/40 text-slate-300/60 font-bold text-xs rounded-xl border border-slate-600/40 flex items-center gap-1.5 cursor-not-allowed"
-                title="Hanya Pemilik Akun dan Kepala Sekolah yang dapat membuat halaqoh baru"
+                title="Hanya Pemilik Akun yang dapat membuat halaqoh baru"
               >
                 <Lock className="w-3.5 h-3.5" /> Tambah Halaqoh (Terkunci)
               </button>
@@ -598,7 +740,7 @@ export const MasterDataManagement: React.FC = () => {
         )}
         {activeTab === 'teachers' && (
           <div className="flex flex-wrap items-center gap-2">
-            {canEditSchoolData ? (
+            {canManageMasterData ? (
               <button
                 onClick={() => {
                   setExcelTargetType('teacher');
@@ -614,7 +756,7 @@ export const MasterDataManagement: React.FC = () => {
               <button
                 disabled
                 className="px-3.5 py-2.5 bg-emerald-900/50 text-emerald-300/60 font-bold text-xs rounded-xl border border-emerald-700/50 flex items-center gap-2 cursor-not-allowed"
-                title="Hanya Pemilik Akun dan Kepala Sekolah yang dapat mengimpor Excel guru"
+                title="Hanya Pemilik Akun yang dapat mengimpor Excel guru"
               >
                 <Lock className="w-3.5 h-3.5 text-amber-300/70" />
                 <span>Upload Excel (Terkunci)</span>
@@ -628,7 +770,7 @@ export const MasterDataManagement: React.FC = () => {
               <Download className="w-3.5 h-3.5 text-emerald-300" />
               <span>Ekspor</span>
             </button>
-            {canEditSchoolData ? (
+            {canManageMasterData ? (
               <button
                 onClick={() => handleOpenTeacherModal()}
                 className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-2 cursor-pointer"
@@ -639,7 +781,7 @@ export const MasterDataManagement: React.FC = () => {
               <button
                 disabled
                 className="px-3.5 py-2.5 bg-slate-700/40 text-slate-300/60 font-bold text-xs rounded-xl border border-slate-600/40 flex items-center gap-1.5 cursor-not-allowed"
-                title="Tambah guru hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+                title="Tambah guru hanya dapat dilakukan oleh Pemilik Akun"
               >
                 <Lock className="w-3.5 h-3.5" /> Tambah Guru (Terkunci)
               </button>
@@ -658,7 +800,7 @@ export const MasterDataManagement: React.FC = () => {
             <button
               disabled
               className="px-3.5 py-2.5 bg-slate-700/40 text-slate-300/60 font-bold text-xs rounded-xl border border-slate-600/40 flex items-center gap-1.5 cursor-not-allowed"
-              title="Tambah pegawai hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+              title="Tambah pegawai hanya dapat dilakukan oleh Pemilik Akun"
             >
               <Lock className="w-3.5 h-3.5" /> Tambah Pegawai (Terkunci)
             </button>
@@ -667,7 +809,7 @@ export const MasterDataManagement: React.FC = () => {
       </div>
 
       {/* Permission Status Banner */}
-      {canEditSchoolData ? (
+      {canManageMasterData ? (
         <div className="bg-emerald-50 border border-emerald-300 rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-emerald-950 shadow-2xs">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 bg-emerald-600 text-white rounded-lg">
@@ -675,15 +817,15 @@ export const MasterDataManagement: React.FC = () => {
             </div>
             <div>
               <span className="font-extrabold text-xs">
-                Hak Akses Penuh: {isAccountOwner ? '👑 Pemilik Akun' : '🏫 Kepala Sekolah'} ({currentUser.name})
+                Akses Pengelolaan Aktif: {isAccountOwner ? '👑 Pemilik Akun' : currentUser.name} ({currentUser.name})
               </span>
               <p className="text-[11px] text-emerald-800">
-                Anda memiliki wewenang penuh untuk menambah, mengedit, mengimpor Excel, dan menghapus data santri, guru, pegawai, serta kelompok halaqoh.
+                Hanya Pemilik Akun yang berhak menambah, mengubah, mengimpor Excel, dan menghapus data guru, pegawai, santri, maupun halaqoh.
               </p>
             </div>
           </div>
           <span className="px-2.5 py-1 bg-emerald-200 text-emerald-900 font-extrabold text-[10px] rounded-lg tracking-wide uppercase shrink-0">
-            Mode Pengeditan Aktif
+            Mode Edit &amp; Hapus Aktif
           </span>
         </div>
       ) : (
@@ -695,17 +837,46 @@ export const MasterDataManagement: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h4 className="font-extrabold text-xs sm:text-sm text-amber-950">
-                  Mode Pratinjau (Hanya Lihat)
+                  {currentUser.role !== 'ortu'
+                    ? 'Mode Lihat Data & Cetak Kartu QR (Edit Terkunci)'
+                    : 'Mode Pratinjau (Hanya Lihat)'}
                 </h4>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-200 text-amber-900">
-                  Akses Pengeditan Terkunci
+                  {currentUser.role !== 'ortu' ? 'Akses Guru & Karyawan' : 'Akses Wali Murid'}
                 </span>
               </div>
               <p className="text-xs text-amber-900 mt-1 max-w-2xl leading-relaxed">
-                Pengeditan data santri, rombel halaqoh, dan kepegawaian <strong>hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah</strong>. Sebagai <strong>{currentUser.name} ({currentUser.position || currentUser.role})</strong>, Anda dapat melihat data dan mengedit foto serta data profil Anda sendiri.
+                {currentUser.role !== 'ortu'
+                  ? 'Sesuai kebijakan keamanan sekolah, hanya Pemilik Akun yang dapat mengubah, menambah, mengimpor, atau menghapus data master. Anda tetap dapat melihat data, mengekspor, serta mencetak Kartu QR santri.'
+                  : 'Akun Wali Murid hanya memiliki akses lihat. Masuk sebagai Pemilik Akun untuk melakukan perubahan data.'}
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Action Feedback Banner */}
+      {actionFeedback && (
+        <div
+          className={`rounded-2xl px-4 py-3 border flex items-center justify-between gap-3 text-xs font-bold animate-in fade-in ${
+            actionFeedback.type === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : actionFeedback.type === 'error'
+              ? 'bg-rose-50 border-rose-300 text-rose-800'
+              : 'bg-sky-50 border-sky-300 text-sky-900'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 shrink-0" />
+            <span>{actionFeedback.text}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setActionFeedback(null)}
+            className="p-1 hover:bg-black/5 rounded-lg cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
         </div>
       )}
 
@@ -829,7 +1000,7 @@ export const MasterDataManagement: React.FC = () => {
                   <Download className="w-3.5 h-3.5 text-emerald-700" />
                   <span>Template (.xlsx)</span>
                 </button>
-                {canEditSchoolData ? (
+                {canManageMasterData ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -846,7 +1017,7 @@ export const MasterDataManagement: React.FC = () => {
                     type="button"
                     disabled
                     className="px-3 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl font-bold text-[11px] flex items-center gap-1.5 justify-center flex-1 sm:flex-none cursor-not-allowed"
-                    title="Import Excel hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+                    title="Import Excel hanya dapat dilakukan oleh Pemilik Akun"
                   >
                     <Lock className="w-3 h-3 text-slate-400" />
                     <span>Upload Excel (Terkunci)</span>
@@ -855,10 +1026,64 @@ export const MasterDataManagement: React.FC = () => {
               </div>
             </div>
 
+            {/* Batch Delete Bar for Students */}
+            {canManageMasterData && selectedStudentIds.length > 0 && (
+              <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-xs font-bold text-rose-900">
+                  <CheckSquare className="w-4 h-4 text-rose-600" />
+                  <span>{selectedStudentIds.length} santri dipilih</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStudentIds([])}
+                    className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-50 cursor-pointer"
+                  >
+                    Batal Pilih
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDeleteConfirmTarget({
+                        kind: 'students-batch',
+                        ids: selectedStudentIds,
+                        title: `${selectedStudentIds.length} Data Santri Terpilih`,
+                        subtitle: 'Seluruh data santri yang dipilih akan dihapus permanen dari daftar murid.'
+                      })
+                    }
+                    className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus Terpilih ({selectedStudentIds.length})</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-y border-slate-200">
                 <tr>
+                  {canManageMasterData && (
+                    <th className="py-3 px-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={
+                          filteredStudents.length > 0 &&
+                          filteredStudents.every((s) => selectedStudentIds.includes(s.id))
+                        }
+                        onChange={() => {
+                          if (filteredStudents.every((s) => selectedStudentIds.includes(s.id))) {
+                            setSelectedStudentIds([]);
+                          } else {
+                            setSelectedStudentIds(filteredStudents.map((s) => s.id));
+                          }
+                        }}
+                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        title="Pilih semua santri"
+                      />
+                    </th>
+                  )}
                   <th className="py-3 px-4">Santri</th>
                   <th className="py-3 px-4">NIS / NISN</th>
                   <th className="py-3 px-4">Kelas</th>
@@ -868,8 +1093,26 @@ export const MasterDataManagement: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredStudents.map((std) => (
-                  <tr key={std.id} className="hover:bg-slate-50/50">
+                {filteredStudents.map((std) => {
+                  const isStdSelected = selectedStudentIds.includes(std.id);
+                  return (
+                  <tr key={std.id} className={`hover:bg-slate-50/50 ${isStdSelected ? 'bg-rose-50/40' : ''}`}>
+                    {canManageMasterData && (
+                      <td className="py-3 px-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isStdSelected}
+                          onChange={() => {
+                            if (isStdSelected) {
+                              setSelectedStudentIds((prev) => prev.filter((id) => id !== std.id));
+                            } else {
+                              setSelectedStudentIds((prev) => [...prev, std.id]);
+                            }
+                          }}
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        />
+                      </td>
+                    )}
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-3">
                         <div className="relative group shrink-0">
@@ -878,7 +1121,7 @@ export const MasterDataManagement: React.FC = () => {
                             alt={std.name}
                             className="w-11 h-11 rounded-xl object-cover border border-emerald-200"
                           />
-                          {canEditSchoolData && (
+                          {canManageMasterData && (
                             <button
                               type="button"
                               onClick={() =>
@@ -920,7 +1163,7 @@ export const MasterDataManagement: React.FC = () => {
                       <div className="text-[10px] text-slate-400">{std.parentPhone}</div>
                     </td>
                     <td className="py-3 px-4">
-                      {canEditSchoolData ? (
+                      {canManageMasterData ? (
                         <button
                           type="button"
                           onClick={() => setQuickHalaqohStudent(std)}
@@ -934,7 +1177,7 @@ export const MasterDataManagement: React.FC = () => {
                       ) : (
                         <div
                           className="px-2.5 py-1 bg-slate-50 text-slate-700 rounded-lg font-bold text-[10px] border border-slate-200 flex items-center gap-1.5 shadow-2xs cursor-not-allowed"
-                          title="Pengaturan halaqoh santri hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+                          title="Pengaturan halaqoh santri hanya dapat dilakukan oleh Pemilik Akun"
                         >
                           <BookOpen className="w-3 h-3 text-slate-400 shrink-0" />
                           <span className="truncate max-w-[150px]">{std.halaqohGroup}</span>
@@ -944,8 +1187,9 @@ export const MasterDataManagement: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
-                        {canEditSchoolData && (
+                        {canManageMasterData && (
                           <button
+                            type="button"
                             onClick={() =>
                               setPhotoModalTarget({
                                 id: std.id,
@@ -962,48 +1206,57 @@ export const MasterDataManagement: React.FC = () => {
                           </button>
                         )}
                         <button
+                          type="button"
                           onClick={() => {
                             setQrGeneratorInitialId(std.id);
                             setIsQrGeneratorOpen(true);
                           }}
-                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition-all flex items-center gap-1 font-bold text-[10px] shadow-2xs"
+                          className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-lg transition-all flex items-center gap-1 font-bold text-[10px] shadow-2xs cursor-pointer"
                           title="Generate & Cetak Kartu ID QR Siswa"
                         >
                           <QrCode className="w-3.5 h-3.5 text-emerald-700" />
                           <span>Kartu QR</span>
                         </button>
                         <button
+                          type="button"
                           onClick={() => setCardPreviewStudent(std)}
-                          className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                          className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                           title="Pratinjau Kartu Santri"
                         >
                           <CreditCard className="w-4 h-4" />
                         </button>
-                        {canEditSchoolData ? (
+                        {canManageMasterData ? (
                           <>
                             <button
+                              type="button"
                               onClick={() => handleOpenStudentModal(std)}
-                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg transition-colors flex items-center gap-1 font-bold text-[10px] cursor-pointer"
                               title="Edit Data Santri"
                             >
-                              <Edit2 className="w-4 h-4" />
+                              <Edit2 className="w-3 h-3" />
+                              <span>Edit</span>
                             </button>
                             <button
-                              onClick={() => {
-                                if (confirm(`Yakin ingin menghapus data santri ${std.name}?`)) {
-                                  deleteStudent(std.id);
-                                }
-                              }}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              type="button"
+                              onClick={() =>
+                                setDeleteConfirmTarget({
+                                  kind: 'student',
+                                  id: std.id,
+                                  title: `Data Santri: ${std.name}`,
+                                  subtitle: `Kelas ${std.className} • NISN ${std.nisn}`
+                                })
+                              }
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition-colors flex items-center gap-1 font-bold text-[10px] cursor-pointer"
                               title="Hapus Data Santri"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3 h-3" />
+                              <span>Hapus</span>
                             </button>
                           </>
                         ) : (
                           <span
                             className="p-1.5 text-slate-300 rounded-lg cursor-not-allowed"
-                            title="Pengeditan data santri hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+                            title="Hanya Pemilik Akun yang dapat mengedit atau menghapus"
                           >
                             <Lock className="w-4 h-4 text-slate-300" />
                           </span>
@@ -1011,7 +1264,8 @@ export const MasterDataManagement: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1045,30 +1299,32 @@ export const MasterDataManagement: React.FC = () => {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-auto">
-              <button
-                type="button"
-                onClick={() => {
-                  setEditingHalaqoh(null);
-                  setHalaqohForm({
-                    name: '',
-                    shortName: '',
-                    mentorName: '',
-                    mentorPhone: '',
-                    focus: '',
-                    targetLevel: '',
-                    room: '',
-                    scheduleTime: '08.00 - 09.15 WIB',
-                    color: 'emerald'
-                  });
-                  setIsHalaqohModalOpen(true);
-                }}
-                className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer flex-1 sm:flex-none justify-center"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Tambah Kelompok</span>
-              </button>
-            </div>
+            {canManageMasterData && (
+              <div className="flex items-center gap-2 shrink-0 self-stretch sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingHalaqoh(null);
+                    setHalaqohForm({
+                      name: '',
+                      shortName: '',
+                      mentorName: '',
+                      mentorPhone: '',
+                      focus: '',
+                      targetLevel: '',
+                      room: '',
+                      scheduleTime: '08.00 - 09.15 WIB',
+                      color: 'emerald'
+                    });
+                    setIsHalaqohModalOpen(true);
+                  }}
+                  className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer flex-1 sm:flex-none justify-center"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Tambah Kelompok</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Halaqoh Groups Overview Cards */}
@@ -1130,29 +1386,39 @@ export const MasterDataManagement: React.FC = () => {
                     <span className="text-slate-500 font-semibold text-[10px]">
                       {isSelectedCard ? '✓ Filter Aktif' : 'Klik untuk filter'}
                     </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingHalaqoh(grp);
-                        setHalaqohForm({
-                          name: grp.name,
-                          shortName: grp.shortName,
-                          mentorName: grp.mentorName,
-                          mentorPhone: grp.mentorPhone || '',
-                          focus: grp.focus,
-                          targetLevel: grp.targetLevel,
-                          room: grp.room,
-                          scheduleTime: grp.scheduleTime,
-                          color: grp.color
-                        });
-                        setIsHalaqohModalOpen(true);
-                      }}
-                      className="text-emerald-700 hover:text-emerald-900 font-bold hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <Edit2 className="w-3 h-3" />
-                      <span>Edit Info</span>
-                    </button>
+                    {canManageMasterData ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingHalaqoh(grp);
+                          setHalaqohForm({
+                            name: grp.name,
+                            shortName: grp.shortName,
+                            mentorName: grp.mentorName,
+                            mentorPhone: grp.mentorPhone || '',
+                            focus: grp.focus,
+                            targetLevel: grp.targetLevel,
+                            room: grp.room,
+                            scheduleTime: grp.scheduleTime,
+                            color: grp.color
+                          });
+                          setIsHalaqohModalOpen(true);
+                        }}
+                        className="text-emerald-700 hover:text-emerald-900 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <Edit2 className="w-3 h-3" />
+                        <span>Edit Info</span>
+                      </button>
+                    ) : (
+                      <span
+                        className="text-slate-400 font-semibold text-[10px] flex items-center gap-1"
+                        title="Hanya Pemilik Akun yang dapat mengubah kelompok halaqoh"
+                      >
+                        <Lock className="w-3 h-3" />
+                        <span>Hanya Lihat</span>
+                      </span>
+                    )}
                   </div>
                 </div>
               );
@@ -1188,7 +1454,7 @@ export const MasterDataManagement: React.FC = () => {
             </div>
 
             {/* Batch Action Bar (Appears when students are selected) */}
-            {selectedStudentIdsForHalaqoh.length > 0 && (
+            {canManageMasterData && selectedStudentIdsForHalaqoh.length > 0 && (
               <div className="p-3.5 bg-emerald-50 border border-emerald-300 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-in fade-in duration-150">
                 <div className="flex items-center gap-2 text-xs font-bold text-emerald-950">
                   <CheckSquare className="w-4 h-4 text-emerald-700" />
@@ -1243,23 +1509,25 @@ export const MasterDataManagement: React.FC = () => {
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-y border-slate-200">
                   <tr>
-                    <th className="py-3 px-4 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        checked={
-                          filteredStudents.length > 0 &&
-                          selectedStudentIdsForHalaqoh.length === filteredStudents.length
-                        }
-                        onChange={() => {
-                          if (selectedStudentIdsForHalaqoh.length === filteredStudents.length) {
-                            setSelectedStudentIdsForHalaqoh([]);
-                          } else {
-                            setSelectedStudentIdsForHalaqoh(filteredStudents.map((s) => s.id));
+                    {canManageMasterData && (
+                      <th className="py-3 px-4 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={
+                            filteredStudents.length > 0 &&
+                            selectedStudentIdsForHalaqoh.length === filteredStudents.length
                           }
-                        }}
-                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                      />
-                    </th>
+                          onChange={() => {
+                            if (selectedStudentIdsForHalaqoh.length === filteredStudents.length) {
+                              setSelectedStudentIdsForHalaqoh([]);
+                            } else {
+                              setSelectedStudentIdsForHalaqoh(filteredStudents.map((s) => s.id));
+                            }
+                          }}
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        />
+                      </th>
+                    )}
                     <th className="py-3 px-4">Santri</th>
                     <th className="py-3 px-4">Kelas</th>
                     <th className="py-3 px-4">Kelompok Halaqoh Saat Ini</th>
@@ -1270,7 +1538,7 @@ export const MasterDataManagement: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {filteredStudents.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-10 text-center text-slate-400">
+                      <td colSpan={canManageMasterData ? 6 : 5} className="py-10 text-center text-slate-400">
                         Tidak ada santri yang cocok dengan filter yang dipilih.
                       </td>
                     </tr>
@@ -1284,25 +1552,27 @@ export const MasterDataManagement: React.FC = () => {
                             isChecked ? 'bg-emerald-50/40' : ''
                           }`}
                         >
-                          <td className="py-3 px-4 text-center">
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => {
-                                if (isChecked) {
-                                  setSelectedStudentIdsForHalaqoh(
-                                    selectedStudentIdsForHalaqoh.filter((id) => id !== std.id)
-                                  );
-                                } else {
-                                  setSelectedStudentIdsForHalaqoh([
-                                    ...selectedStudentIdsForHalaqoh,
-                                    std.id
-                                  ]);
-                                }
-                              }}
-                              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
-                            />
-                          </td>
+                          {canManageMasterData && (
+                            <td className="py-3 px-4 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => {
+                                  if (isChecked) {
+                                    setSelectedStudentIdsForHalaqoh(
+                                      selectedStudentIdsForHalaqoh.filter((id) => id !== std.id)
+                                    );
+                                  } else {
+                                    setSelectedStudentIdsForHalaqoh([
+                                      ...selectedStudentIdsForHalaqoh,
+                                      std.id
+                                    ]);
+                                  }
+                                }}
+                                className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                              />
+                            </td>
+                          )}
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-3">
                               <div className="relative group shrink-0">
@@ -1311,22 +1581,24 @@ export const MasterDataManagement: React.FC = () => {
                                   alt={std.name}
                                   className="w-10 h-10 rounded-xl object-cover border border-emerald-200"
                                 />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setPhotoModalTarget({
-                                      id: std.id,
-                                      name: std.name,
-                                      currentPhoto: std.photoUrl,
-                                      type: 'student',
-                                      gender: std.gender
-                                    })
-                                  }
-                                  className="absolute inset-0 bg-black/50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[9px] font-bold cursor-pointer"
-                                  title="Ubah Foto Santri"
-                                >
-                                  <Camera className="w-3.5 h-3.5 text-emerald-300" />
-                                </button>
+                                {canManageMasterData && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setPhotoModalTarget({
+                                        id: std.id,
+                                        name: std.name,
+                                        currentPhoto: std.photoUrl,
+                                        type: 'student',
+                                        gender: std.gender
+                                      })
+                                    }
+                                    className="absolute inset-0 bg-black/50 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white text-[9px] font-bold cursor-pointer"
+                                    title="Ubah Foto Santri"
+                                  >
+                                    <Camera className="w-3.5 h-3.5 text-emerald-300" />
+                                  </button>
+                                )}
                               </div>
                               <div>
                                 <div className="font-bold text-slate-900">{std.name}</div>
@@ -1342,16 +1614,27 @@ export const MasterDataManagement: React.FC = () => {
                             </span>
                           </td>
                           <td className="py-3 px-4">
-                            <button
-                              type="button"
-                              onClick={() => setQuickHalaqohStudent(std)}
-                              className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-lg font-bold text-[11px] border border-emerald-200 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer group"
-                              title="Klik untuk ubah kelompok halaqoh santri ini"
-                            >
-                              <BookOpen className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                              <span className="truncate max-w-[180px]">{std.halaqohGroup}</span>
-                              <ArrowRightLeft className="w-2.5 h-2.5 text-emerald-500 group-hover:text-emerald-800 transition-colors shrink-0" />
-                            </button>
+                            {canManageMasterData ? (
+                              <button
+                                type="button"
+                                onClick={() => setQuickHalaqohStudent(std)}
+                                className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 rounded-lg font-bold text-[11px] border border-emerald-200 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer group"
+                                title="Klik untuk ubah kelompok halaqoh santri ini"
+                              >
+                                <BookOpen className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span className="truncate max-w-[180px]">{std.halaqohGroup}</span>
+                                <ArrowRightLeft className="w-2.5 h-2.5 text-emerald-500 group-hover:text-emerald-800 transition-colors shrink-0" />
+                              </button>
+                            ) : (
+                              <div
+                                className="px-2.5 py-1 bg-slate-50 text-slate-700 rounded-lg font-bold text-[11px] border border-slate-200 flex items-center gap-1.5 shadow-2xs cursor-not-allowed"
+                                title="Pengaturan halaqoh santri hanya dapat dilakukan oleh Pemilik Akun"
+                              >
+                                <BookOpen className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                <span className="truncate max-w-[180px]">{std.halaqohGroup}</span>
+                                <Lock className="w-2.5 h-2.5 text-slate-400 shrink-0" />
+                              </div>
+                            )}
                           </td>
                           <td className="py-3 px-4">
                             <div className="font-semibold text-slate-800">{std.parentName}</div>
@@ -1359,15 +1642,17 @@ export const MasterDataManagement: React.FC = () => {
                           </td>
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() => setQuickHalaqohStudent(std)}
-                                className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
-                                title="Pindahkan Halaqoh Santri"
-                              >
-                                <ArrowRightLeft className="w-3 h-3 text-emerald-600" />
-                                <span>Pindah Halaqoh</span>
-                              </button>
+                              {canManageMasterData && (
+                                <button
+                                  type="button"
+                                  onClick={() => setQuickHalaqohStudent(std)}
+                                  className="px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
+                                  title="Pindahkan Halaqoh Santri"
+                                >
+                                  <ArrowRightLeft className="w-3 h-3 text-emerald-600" />
+                                  <span>Pindah Halaqoh</span>
+                                </button>
+                              )}
                               <button
                                 type="button"
                                 onClick={() => setCardPreviewStudent(std)}
@@ -1415,17 +1700,29 @@ export const MasterDataManagement: React.FC = () => {
                 <Download className="w-3.5 h-3.5 text-emerald-700" />
                 <span>Template (.xlsx)</span>
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setExcelTargetType('teacher');
-                  setIsExcelImportOpen(true);
-                }}
-                className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-[11px] transition-colors flex items-center gap-1.5 justify-center flex-1 sm:flex-none shadow-xs cursor-pointer"
-              >
-                <Upload className="w-3.5 h-3.5" />
-                <span>Upload File Excel</span>
-              </button>
+              {canManageMasterData ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExcelTargetType('teacher');
+                    setIsExcelImportOpen(true);
+                  }}
+                  className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl font-bold text-[11px] transition-colors flex items-center gap-1.5 justify-center flex-1 sm:flex-none shadow-xs cursor-pointer"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Upload File Excel</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="px-3 py-1.5 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl font-bold text-[11px] flex items-center gap-1.5 justify-center flex-1 sm:flex-none cursor-not-allowed"
+                  title="Import Excel guru hanya dapat dilakukan oleh Pemilik Akun"
+                >
+                  <Lock className="w-3 h-3 text-slate-400" />
+                  <span>Upload Excel (Terkunci)</span>
+                </button>
+              )}
             </div>
           </div>
 
@@ -1451,10 +1748,64 @@ export const MasterDataManagement: React.FC = () => {
             </div>
           </div>
 
+          {/* Batch Delete Bar for Teachers */}
+          {canManageMasterData && selectedTeacherIds.length > 0 && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-rose-900">
+                <CheckSquare className="w-4 h-4 text-rose-600" />
+                <span>{selectedTeacherIds.length} guru dipilih</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTeacherIds([])}
+                  className="px-3 py-1.5 bg-white border border-slate-300 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-50 cursor-pointer"
+                >
+                  Batal Pilih
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDeleteConfirmTarget({
+                      kind: 'teachers-batch',
+                      ids: selectedTeacherIds,
+                      title: `${selectedTeacherIds.length} Data Guru Terpilih`,
+                      subtitle: 'Data guru beserta akun login masing-masing akan dihapus permanen.'
+                    })
+                  }
+                  className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Hapus Terpilih ({selectedTeacherIds.length})</span>
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="overflow-x-auto bg-white rounded-2xl border border-slate-200">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] tracking-wider border-y border-slate-200">
                 <tr>
+                  {canManageMasterData && (
+                    <th className="py-3 px-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={
+                          filteredTeachers.length > 0 &&
+                          filteredTeachers.every((t) => selectedTeacherIds.includes(t.id))
+                        }
+                        onChange={() => {
+                          if (filteredTeachers.every((t) => selectedTeacherIds.includes(t.id))) {
+                            setSelectedTeacherIds([]);
+                          } else {
+                            setSelectedTeacherIds(filteredTeachers.map((t) => t.id));
+                          }
+                        }}
+                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                        title="Pilih semua guru"
+                      />
+                    </th>
+                  )}
                   <th className="py-3 px-4">Pendidik</th>
                   <th className="py-3 px-4">NUPTK / NIP</th>
                   <th className="py-3 px-4">Tugas & Jabatan</th>
@@ -1466,11 +1817,29 @@ export const MasterDataManagement: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {filteredTeachers.map((tch) => {
                   const isSelfTch = currentUser.relatedTeacherId === tch.id || currentUser.id === tch.id;
-                  const canEditThisTch = canEditSchoolData || isSelfTch;
+                  const canEditThisTch = canManageMasterData;
+                  const isTchSelected = selectedTeacherIds.includes(tch.id);
+                  const linkedAccount = getUserForTeacher(tch.id);
                   const duty = tch.assignedDuty || (tch.position.includes('Wali') ? 'Wali Kelas' : tch.position.includes('Kepala') ? 'Kepala Sekolah' : tch.position.includes('Halaqoh') ? 'Pembimbing Halaqoh' : 'Guru');
 
                   return (
-                    <tr key={tch.id} className="hover:bg-slate-50/50">
+                    <tr key={tch.id} className={`hover:bg-slate-50/50 ${isTchSelected ? 'bg-rose-50/40' : ''}`}>
+                      {canManageMasterData && (
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isTchSelected}
+                            onChange={() => {
+                              if (isTchSelected) {
+                                setSelectedTeacherIds((prev) => prev.filter((id) => id !== tch.id));
+                              } else {
+                                setSelectedTeacherIds((prev) => [...prev, tch.id]);
+                              }
+                            }}
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          />
+                        </td>
+                      )}
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
                           <div className="relative group shrink-0">
@@ -1508,8 +1877,14 @@ export const MasterDataManagement: React.FC = () => {
                                 </span>
                               )}
                             </div>
-                            <div className="text-[10px] text-slate-400">
-                              Pendidik TK Al Mishbah
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                              <span>Pendidik TK Al Mishbah</span>
+                              {linkedAccount && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded font-mono font-bold text-[9px]">
+                                  <KeyRound className="w-2.5 h-2.5 text-emerald-600" />
+                                  @{linkedAccount.username}
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1554,6 +1929,7 @@ export const MasterDataManagement: React.FC = () => {
                           {canEditThisTch ? (
                             <>
                               <button
+                                type="button"
                                 onClick={() =>
                                   setPhotoModalTarget({
                                     id: tch.id,
@@ -1569,39 +1945,46 @@ export const MasterDataManagement: React.FC = () => {
                                 <Camera className="w-4 h-4" />
                               </button>
                               <button
+                                type="button"
                                 onClick={() => handleOpenTeacherModal(tch)}
-                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-lg transition-colors flex items-center gap-1 font-bold text-[10px] cursor-pointer"
                                 title="Edit Data Guru"
                               >
-                                <Edit2 className="w-4 h-4" />
+                                <Edit2 className="w-3 h-3" />
+                                <span>Edit</span>
                               </button>
                             </>
                           ) : (
                             <button
                               disabled
                               className="p-1.5 text-slate-300 rounded-lg cursor-not-allowed"
-                              title="Pengeditan data guru hanya dapat dilakukan oleh Pemilik Akun, Kepala Sekolah, atau guru pemilik akun."
+                              title="Pengeditan data guru hanya dapat dilakukan oleh Pemilik Akun."
                             >
                               <Lock className="w-4 h-4" />
                             </button>
                           )}
-                          {canEditSchoolData ? (
+                          {canManageMasterData ? (
                             <button
-                              onClick={() => {
-                                if (confirm(`Yakin ingin menghapus data pendidik ${tch.name}?`)) {
-                                  deleteTeacher(tch.id);
-                                }
-                              }}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              type="button"
+                              onClick={() =>
+                                setDeleteConfirmTarget({
+                                  kind: 'teacher',
+                                  id: tch.id,
+                                  title: `Data Guru: ${tch.name}`,
+                                  subtitle: `${tch.position} • Akun login terkait juga akan dihapus.`
+                                })
+                              }
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition-colors flex items-center gap-1 font-bold text-[10px] cursor-pointer"
                               title="Hapus Data Guru"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3 h-3" />
+                              <span>Hapus</span>
                             </button>
                           ) : (
                             <button
                               disabled
                               className="p-1.5 text-slate-300 rounded-lg cursor-not-allowed"
-                              title="Hapus data guru hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+                              title="Hapus data guru hanya dapat dilakukan oleh Pemilik Akun"
                             >
                               <Trash2 className="w-4 h-4 opacity-40" />
                             </button>
@@ -1658,7 +2041,8 @@ export const MasterDataManagement: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {filteredStaff.map((st) => {
                   const isSelfStaff = currentUser.relatedStaffId === st.id || currentUser.id === st.id;
-                  const canEditThisStaff = canEditSchoolData || isSelfStaff;
+                  const canEditThisStaff = canEditSchoolData;
+                  const linkedAccount = getUserForStaff(st.id);
                   const duty = st.assignedDuty || (st.department.includes('Keuangan') || st.department.includes('Keamanan') ? 'Karyawan' : 'Staff');
 
                   return (
@@ -1699,7 +2083,15 @@ export const MasterDataManagement: React.FC = () => {
                                 </span>
                               )}
                             </div>
-                            <div className="text-[10px] text-slate-400">Tenaga Kependidikan</div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                              <span>Tenaga Kependidikan</span>
+                              {linkedAccount && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded font-mono font-bold text-[9px]">
+                                  <KeyRound className="w-2.5 h-2.5 text-emerald-600" />
+                                  @{linkedAccount.username}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -1761,28 +2153,33 @@ export const MasterDataManagement: React.FC = () => {
                             <button
                               disabled
                               className="p-1.5 text-slate-300 rounded-lg cursor-not-allowed"
-                              title="Pengeditan data pegawai hanya dapat dilakukan oleh Pemilik Akun, Kepala Sekolah, atau pegawai bersangkutan"
+                              title="Pengeditan data pegawai hanya dapat dilakukan oleh Pemilik Akun"
                             >
                               <Lock className="w-4 h-4" />
                             </button>
                           )}
                           {canEditSchoolData ? (
                             <button
-                              onClick={() => {
-                                if (confirm(`Yakin ingin menghapus data staf ${st.name}?`)) {
-                                  deleteStaff(st.id);
-                                }
-                              }}
-                              className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              type="button"
+                              onClick={() =>
+                                setDeleteConfirmTarget({
+                                  kind: 'staff',
+                                  id: st.id,
+                                  title: `Data Pegawai: ${st.name}`,
+                                  subtitle: `${st.department} • Akun login terkait juga akan dihapus.`
+                                })
+                              }
+                              className="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-lg transition-colors flex items-center gap-1 font-bold text-[10px] cursor-pointer"
                               title="Hapus Data Pegawai"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Trash2 className="w-3 h-3" />
+                              <span>Hapus</span>
                             </button>
                           ) : (
                             <button
                               disabled
                               className="p-1.5 text-slate-300 rounded-lg cursor-not-allowed"
-                              title="Hapus data pegawai hanya dapat dilakukan oleh Pemilik Akun dan Kepala Sekolah"
+                              title="Hapus data pegawai hanya dapat dilakukan oleh Pemilik Akun"
                             >
                               <Trash2 className="w-4 h-4 opacity-40" />
                             </button>
@@ -2040,6 +2437,12 @@ export const MasterDataManagement: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveTeacher} className="p-6 space-y-4 text-xs">
+              {teacherFormError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-bold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{teacherFormError}</span>
+                </div>
+              )}
               {/* Photo Upload Section */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl">
                 <div className="relative group shrink-0">
@@ -2207,6 +2610,52 @@ export const MasterDataManagement: React.FC = () => {
                 </div>
               </div>
 
+              {/* Login Account & Password Section */}
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-amber-950 flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Akun Login &amp; Kata Sandi Pegawai</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
+                    Akses Pribadi
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Username Login</label>
+                    <input
+                      type="text"
+                      value={teacherForm.loginUsername}
+                      onChange={(e) => setTeacherForm({ ...teacherForm, loginUsername: e.target.value })}
+                      placeholder={editingTeacher ? 'ustadzah.nama' : 'Otomatis dari nama jika kosong'}
+                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl font-mono text-slate-800 focus:outline-emerald-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      {editingTeacher ? 'Kata Sandi Baru (Opsional)' : 'Kata Sandi Awal'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showTeacherPassword ? 'text' : 'password'}
+                        value={teacherForm.loginPassword}
+                        onChange={(e) => setTeacherForm({ ...teacherForm, loginPassword: e.target.value })}
+                        placeholder={editingTeacher ? 'Kosong = tetap sandi lama' : 'Default: password123'}
+                        className="w-full pl-3 pr-8 py-2 bg-white border border-amber-200 rounded-xl text-slate-800 focus:outline-emerald-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowTeacherPassword((prev) => !prev)}
+                        className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {showTeacherPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
                 <button
                   type="button"
@@ -2245,6 +2694,12 @@ export const MasterDataManagement: React.FC = () => {
             </div>
 
             <form onSubmit={handleSaveStaff} className="p-6 space-y-4 text-xs">
+              {staffFormError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 font-bold flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{staffFormError}</span>
+                </div>
+              )}
               {/* Photo Upload Section */}
               <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 p-3.5 bg-emerald-50/70 border border-emerald-200/80 rounded-2xl">
                 <div className="relative group shrink-0">
@@ -2407,6 +2862,52 @@ export const MasterDataManagement: React.FC = () => {
                   onChange={(e) => setStaffForm({ ...staffForm, phone: e.target.value })}
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-emerald-600"
                 />
+              </div>
+
+              {/* Login Account & Password Section */}
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-amber-950 flex items-center gap-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Akun Login &amp; Kata Sandi Pegawai</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-md">
+                    Akses Pribadi
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Username Login</label>
+                    <input
+                      type="text"
+                      value={staffForm.loginUsername}
+                      onChange={(e) => setStaffForm({ ...staffForm, loginUsername: e.target.value })}
+                      placeholder={editingStaff ? 'nama.pegawai' : 'Otomatis dari nama jika kosong'}
+                      className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl font-mono text-slate-800 focus:outline-emerald-600"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      {editingStaff ? 'Kata Sandi Baru (Opsional)' : 'Kata Sandi Awal'}
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showStaffPassword ? 'text' : 'password'}
+                        value={staffForm.loginPassword}
+                        onChange={(e) => setStaffForm({ ...staffForm, loginPassword: e.target.value })}
+                        placeholder={editingStaff ? 'Kosong = tetap sandi lama' : 'Default: password123'}
+                        className="w-full pl-3 pr-8 py-2 bg-white border border-amber-200 rounded-xl text-slate-800 focus:outline-emerald-600"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowStaffPassword((prev) => !prev)}
+                        className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        {showStaffPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="pt-3 border-t border-slate-100 flex justify-end gap-2">
@@ -2740,6 +3241,57 @@ export const MasterDataManagement: React.FC = () => {
           gender={photoModalTarget.gender}
           onSavePhoto={handleSavePhotoModal}
         />
+      )}
+
+      {/* IN-APP DELETE CONFIRMATION MODAL */}
+      {deleteConfirmTarget && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-rose-200 overflow-hidden animate-in zoom-in-95 duration-150">
+            <div className="p-5 bg-rose-50 border-b border-rose-100 flex items-center justify-between">
+              <div className="flex items-center gap-2.5 text-rose-900">
+                <div className="p-2 bg-rose-600 text-white rounded-xl">
+                  <Trash2 className="w-4 h-4" />
+                </div>
+                <h3 className="font-extrabold text-sm">Konfirmasi Hapus Data</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmTarget(null)}
+                className="p-1 text-rose-400 hover:text-rose-700 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="p-3.5 rounded-2xl bg-rose-50/60 border border-rose-200">
+                <div className="font-extrabold text-slate-900 text-sm">{deleteConfirmTarget.title}</div>
+                <p className="text-[11px] text-slate-600 mt-1">{deleteConfirmTarget.subtitle}</p>
+              </div>
+              <p className="text-slate-600 leading-relaxed">
+                Tindakan ini akan menghapus data dari daftar aplikasi. Setelah selesai, Anda juga dapat menekan <strong>Update &amp; Publish</strong> agar perubahan tersinkronisasi ke semua perangkat.
+              </p>
+
+              <div className="pt-2 border-t border-slate-100 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmTarget(null)}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-extrabold rounded-xl shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Ya, Hapus Data</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

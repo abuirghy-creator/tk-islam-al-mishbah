@@ -129,9 +129,9 @@ export const ParentTeacherChat: React.FC = () => {
                 ))
               : users
                   .filter((u) => u.id !== currentUser.id)
-                  .map((u) => (
+                  .map((u, idx) => (
                     <button
-                      key={u.id}
+                      key={`${u.id}-${idx}`}
                       onClick={() => setSelectedRecipientId(u.id)}
                       className={`w-full p-3 rounded-2xl text-left transition-all flex items-center gap-3 ${
                         selectedRecipientId === u.id
