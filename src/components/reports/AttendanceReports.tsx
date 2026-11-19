@@ -26,6 +26,7 @@ import {
   exportMonthlyTeacherAttendanceExcel
 } from '../../services/excelService';
 import { TeacherAttendanceRecord } from '../../types';
+import { getScheduleForDate } from '../../utils/workSchedule';
 
 const INDONESIAN_MONTHS = [
   'Januari',
@@ -60,6 +61,7 @@ interface PersonnelRow {
 
 export const AttendanceReports: React.FC = () => {
   const {
+    schoolProfile,
     students,
     studentAttendance,
     teachers,
@@ -93,6 +95,9 @@ export const AttendanceReports: React.FC = () => {
   const [teacherStatusFilter, setTeacherStatusFilter] = useState<string>('');
   const [teacherSearch, setTeacherSearch] = useState<string>('');
   const [selectedPersonnelDetailId, setSelectedPersonnelDetailId] = useState<string>('');
+
+  const selectedDateGuruSchedule = getScheduleForDate(schoolProfile.workSchedule, 'guru', selectedDate);
+  const selectedDateStaffSchedule = getScheduleForDate(schoolProfile.workSchedule, 'karyawan', selectedDate);
 
   useEffect(() => {
     if (isParent) {
@@ -729,7 +734,9 @@ export const AttendanceReports: React.FC = () => {
                     <span className="text-xl sm:text-2xl font-black text-teal-950 mt-1 block">
                       {personnelDailyStats.tepatWaktu}
                     </span>
-                    <span className="text-[10px] text-teal-700 font-medium">≤ 07:30 WIB</span>
+                    <span className="text-[10px] text-teal-700 font-medium">
+                      Guru ≤ {selectedDateGuruSchedule.checkIn} • Staf ≤ {selectedDateStaffSchedule.checkIn}
+                    </span>
                   </div>
                   <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-center">
                     <span className="text-[10px] uppercase font-bold text-amber-700 block">
@@ -738,7 +745,9 @@ export const AttendanceReports: React.FC = () => {
                     <span className="text-xl sm:text-2xl font-black text-amber-950 mt-1 block">
                       {personnelDailyStats.terlambat}
                     </span>
-                    <span className="text-[10px] text-amber-700 font-medium">&gt; 07:30 WIB</span>
+                    <span className="text-[10px] text-amber-700 font-medium">
+                      Lewat Jadwal {selectedDateGuruSchedule.dayLabel}
+                    </span>
                   </div>
                   <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 text-center">
                     <span className="text-[10px] uppercase font-bold text-blue-700 block">
@@ -782,6 +791,7 @@ export const AttendanceReports: React.FC = () => {
                           <th className="py-3 px-4">Kategori</th>
                           <th className="py-3 px-4">Jabatan / Unit</th>
                           <th className="py-3 px-4">Jam Masuk</th>
+                          <th className="py-3 px-4">Jam Keluar</th>
                           <th className="py-3 px-4">Status</th>
                           <th className="py-3 px-4">Lokasi GPS</th>
                           <th className="py-3 px-4">Keterangan</th>
@@ -792,7 +802,7 @@ export const AttendanceReports: React.FC = () => {
                         {personnelDailyRows.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={canManageMasterData ? 9 : 8}
+                              colSpan={canManageMasterData ? 10 : 9}
                               className="py-8 text-center text-slate-400"
                             >
                               Tidak ada data guru/karyawan yang sesuai dengan filter pencarian.
@@ -833,6 +843,21 @@ export const AttendanceReports: React.FC = () => {
                               </td>
                               <td className="py-3 px-4 font-mono text-slate-600">
                                 {record ? `${record.time} WIB` : '-'}
+                              </td>
+                              <td className="py-3 px-4 font-mono text-slate-600">
+                                {record?.checkOutTime ? (
+                                  <span
+                                    className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                                      record.checkOutEarly
+                                        ? 'bg-amber-100 text-amber-800'
+                                        : 'bg-sky-100 text-sky-800'
+                                    }`}
+                                  >
+                                    {record.checkOutTime} WIB
+                                  </span>
+                                ) : (
+                                  '-'
+                                )}
                               </td>
                               <td className="py-3 px-4">
                                 <span
@@ -918,7 +943,7 @@ export const AttendanceReports: React.FC = () => {
                     <span className="text-xl sm:text-2xl font-black text-teal-950 mt-1 block">
                       {personnelMonthlyStats.sumTepat}
                     </span>
-                    <span className="text-[10px] text-teal-700 font-medium">Kehadiran ≤ 07:30</span>
+                    <span className="text-[10px] text-teal-700 font-medium">Sesuai Jadwal Masuk</span>
                   </div>
                   <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-center">
                     <span className="text-[10px] uppercase font-bold text-amber-700 block">
@@ -927,7 +952,7 @@ export const AttendanceReports: React.FC = () => {
                     <span className="text-xl sm:text-2xl font-black text-amber-950 mt-1 block">
                       {personnelMonthlyStats.sumTelat}
                     </span>
-                    <span className="text-[10px] text-amber-700 font-medium">Kehadiran &gt; 07:30</span>
+                    <span className="text-[10px] text-amber-700 font-medium">Lewat Jadwal Masuk</span>
                   </div>
                   <div className="p-4 rounded-2xl bg-blue-50/70 border border-blue-200 text-center">
                     <span className="text-[10px] uppercase font-bold text-blue-700 block">
@@ -1098,6 +1123,7 @@ export const AttendanceReports: React.FC = () => {
                           <th className="py-2.5 px-4">Nama Pegawai</th>
                           <th className="py-2.5 px-4">Kategori</th>
                           <th className="py-2.5 px-4">Jam Masuk</th>
+                          <th className="py-2.5 px-4">Jam Keluar</th>
                           <th className="py-2.5 px-4">Status</th>
                           <th className="py-2.5 px-4">Keterangan</th>
                         </tr>
@@ -1105,7 +1131,7 @@ export const AttendanceReports: React.FC = () => {
                       <tbody className="divide-y divide-slate-100">
                         {selectedPersonnelMonthLogs.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="py-6 text-center text-slate-400">
+                            <td colSpan={7} className="py-6 text-center text-slate-400">
                               Belum ada riwayat presensi guru/karyawan tercatat pada bulan {selectedMonthLabel}.
                             </td>
                           </tr>
@@ -1134,6 +1160,9 @@ export const AttendanceReports: React.FC = () => {
                                 </td>
                                 <td className="py-2.5 px-4 font-mono text-slate-500">
                                   {rec.time} WIB
+                                </td>
+                                <td className="py-2.5 px-4 font-mono text-slate-500">
+                                  {rec.checkOutTime ? `${rec.checkOutTime} WIB` : '-'}
                                 </td>
                                 <td className="py-2.5 px-4">
                                   <span

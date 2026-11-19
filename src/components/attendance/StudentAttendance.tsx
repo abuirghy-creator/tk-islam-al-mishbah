@@ -21,6 +21,7 @@ import {
 import confetti from 'canvas-confetti';
 import { StudentCardModal } from '../cards/StudentCardModal';
 import { ExcelImportModal } from '../master/ExcelImportModal';
+import { AndroidBarcodeCamera } from './AndroidBarcodeCamera';
 
 const STATUS_LIST: AttendanceStatus[] = ['Hadir', 'Terlambat', 'Izin', 'Sakit', 'Alpa'];
 
@@ -40,7 +41,8 @@ export const StudentAttendance: React.FC = () => {
     batchUpdateStudentAttendance,
     halaqohGroups,
     schoolProfile,
-    canManageMasterData
+    canManageMasterData,
+    currentUser
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'scan' | 'manual' | 'cards'>('scan');
@@ -513,24 +515,23 @@ export const StudentAttendance: React.FC = () => {
 
               {scanPanelMode === 'barcode' ? (
                 <>
-                  {/* Animated Scanner Laser Viewport */}
-                  <div className="relative aspect-16/9 bg-slate-950 rounded-2xl overflow-hidden border-2 border-emerald-500/40 shadow-inner flex flex-col items-center justify-center p-6 text-center text-white">
-                    <div className="absolute top-3 right-3 text-[11px] font-bold px-2.5 py-1 rounded-full bg-emerald-900/90 text-emerald-200 border border-emerald-500/40">
-                      {students.length} Santri Terdaftar
-                    </div>
-                    {/* Laser animation */}
-                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#34d399] animate-bounce" />
+                  {/* Live Android Camera Barcode & QR Scanner */}
+                  <AndroidBarcodeCamera
+                    active={activeTab === 'scan' && scanPanelMode === 'barcode'}
+                    autoConnect={true}
+                    studentsCount={students.length}
+                    onDetected={handleProcessBarcode}
+                    onSwitchToManual={() => setScanPanelMode('manual')}
+                  />
 
-                    <div className="border-2 border-dashed border-emerald-400/60 rounded-2xl w-48 h-32 flex items-center justify-center mb-3">
-                      <ScanLine className="w-12 h-12 text-emerald-400 animate-pulse" />
+                  {currentUser.role === 'guru' && (
+                    <div className="mt-3 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-900 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        Mode Guru aktif: Kamera Android otomatis terhubung ke pemindai barcode &amp; QR santri saat Anda masuk aplikasi.
+                      </span>
                     </div>
-                    <div className="text-xs font-semibold text-emerald-200">
-                      Sensor Barcode Kamera Gerbang Aktif • Siap Membaca Kode Kartu
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1">
-                      Mendukung Scanner USB Fisik, Barcode 1D, & QR Code 2D
-                    </div>
-                  </div>
+                  )}
 
                   {/* Manual Barcode Input Form */}
                   <form onSubmit={handleBarcodeSubmit} className="mt-4 flex flex-wrap sm:flex-nowrap gap-2">

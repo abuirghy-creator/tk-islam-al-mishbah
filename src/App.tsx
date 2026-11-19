@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/common/Header';
 import { Sidebar } from './components/common/Sidebar';
@@ -6,7 +6,9 @@ import { NotificationDrawer } from './components/common/NotificationDrawer';
 import { LoginModal, LoginScreen } from './components/auth/LoginModal';
 import { Dashboard } from './components/dashboard/Dashboard';
 import { TeacherSelfieAttendance } from './components/attendance/TeacherSelfieAttendance';
+import { WorkScheduleSettingsPanel } from './components/attendance/WorkScheduleSettingsPanel';
 import { StudentAttendance } from './components/attendance/StudentAttendance';
+import { StudentTeacherAttendanceMenu } from './components/attendance/StudentTeacherAttendanceMenu';
 import { LocationTracker } from './components/attendance/LocationTracker';
 import { MasterDataManagement } from './components/master/MasterDataManagement';
 import { HalaqohTahfidz } from './components/halaqoh/HalaqohTahfidz';
@@ -22,8 +24,12 @@ import { Menu, Home, ArrowLeft, ChevronRight } from 'lucide-react';
 
 const TAB_LABELS: Record<string, string> = {
   dashboard: 'Beranda',
-  'teacher-att': 'Presensi & Cuti Guru/Staf',
-  'student-att': 'Presensi Scan Siswa',
+  'attendance-hub': 'Absensi Murid & Guru',
+  'teacher-att': 'Absensi & Cuti Guru/Staf',
+  'schedule-guru': "Jadwal Guru (Senin–Jum'at)",
+  'schedule-karyawan': "Jadwal Karyawan (Senin–Jum'at)",
+  'work-schedule': "Jadwal Masuk & Keluar (Senin–Jum'at)",
+  'student-att': 'Absensi Murid (Scan & Manual)',
   'gps-tracker': 'Pelacakan Lokasi GPS',
   'master-data': 'Data Guru, Staf & Murid',
   halaqoh: 'Halaqoh Tahfidz Cilik',
@@ -46,6 +52,8 @@ const AppContent: React.FC = () => {
   const [isSharePortalModalOpen, setIsSharePortalModalOpen] = useState<boolean>(false);
   const [gmpQuotaExceeded, setGmpQuotaExceeded] = useState<boolean>(false);
 
+  const lastAutoScannerSessionRef = useRef<string | null>(null);
+
   const isParent = currentUser.role === 'ortu';
 
   useEffect(() => {
@@ -53,6 +61,24 @@ const AppContent: React.FC = () => {
     window.addEventListener('gmp-quota-exceeded', handleQuotaExceeded);
     return () => window.removeEventListener('gmp-quota-exceeded', handleQuotaExceeded);
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      lastAutoScannerSessionRef.current = null;
+      return;
+    }
+
+    const sessionKey = `${currentUser.id}:${currentUser.role}`;
+    if (currentUser.role === 'guru') {
+      if (lastAutoScannerSessionRef.current !== sessionKey) {
+        lastAutoScannerSessionRef.current = sessionKey;
+        setActiveTab('student-att');
+        setIsMobileSidebarOpen(false);
+      }
+    } else {
+      lastAutoScannerSessionRef.current = sessionKey;
+    }
+  }, [isAuthenticated, currentUser.id, currentUser.role]);
 
   useEffect(() => {
     if (isParent) {
@@ -94,8 +120,16 @@ const AppContent: React.FC = () => {
             onOpenShareModal={isParent ? undefined : () => setIsSharePortalModalOpen(true)}
           />
         );
+      case 'attendance-hub':
+        return <StudentTeacherAttendanceMenu onNavigateTab={navigateTab} />;
       case 'teacher-att':
         return <TeacherSelfieAttendance />;
+      case 'schedule-guru':
+        return <WorkScheduleSettingsPanel scope="guru" showBannerHeader />;
+      case 'schedule-karyawan':
+        return <WorkScheduleSettingsPanel scope="karyawan" showBannerHeader />;
+      case 'work-schedule':
+        return <WorkScheduleSettingsPanel scope="both" showBannerHeader />;
       case 'student-att':
         return <StudentAttendance />;
       case 'gps-tracker':

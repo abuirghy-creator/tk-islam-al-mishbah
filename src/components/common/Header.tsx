@@ -36,7 +36,8 @@ export const Header: React.FC<HeaderProps> = ({
     realtimeConnected,
     connectedClientsCount,
     lastSyncedEvent,
-    lastActionLabel
+    lastActionLabel,
+    databaseSyncInfo
   } = useApp();
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [isMyPhotoModalOpen, setIsMyPhotoModalOpen] = useState(false);
@@ -172,9 +173,11 @@ export const Header: React.FC<HeaderProps> = ({
                   : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-200'
               }`}
               title={
-                lastSyncedEvent
-                  ? `Update terakhir: ${lastSyncedEvent.actionLabel} oleh ${lastSyncedEvent.savedBy}`
-                  : 'Status Sinkronisasi Portal Real-Time'
+                databaseSyncInfo.supabaseStatus !== 'connected'
+                  ? `Auto-save lokal aktif • Database Supabase perlu aktivasi tabel/izin (${databaseSyncInfo.supabaseStatus}). Klik untuk sinkronkan.`
+                  : lastSyncedEvent
+                  ? `Tersinkron ke Database Supabase • Update terakhir: ${lastSyncedEvent.actionLabel} oleh ${lastSyncedEvent.savedBy}`
+                  : 'Tersinkron Otomatis ke Database Supabase & Real-Time Portal'
               }
             >
               {hasRemoteUpdate || autoSaveStatus === 'saving' ? (
@@ -193,6 +196,14 @@ export const Header: React.FC<HeaderProps> = ({
                   ? `Menyinkronkan v${publishMeta.publishedVersion}`
                   : autoSaveStatus === 'offline'
                   ? 'Tersimpan Lokal'
+                  : databaseSyncInfo.supabaseStatus === 'connected'
+                  ? `Auto-Save DB${
+                      publishMeta.publishedVersion > 0
+                        ? ` • v${publishMeta.publishedVersion}`
+                        : localPublishedVersion > 0
+                        ? ` • v${localPublishedVersion}`
+                        : ''
+                    }`
                   : realtimeConnected
                   ? `Real-Time Live${
                       publishMeta.publishedVersion > 0

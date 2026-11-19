@@ -25,7 +25,10 @@ import {
   FileCheck,
   Briefcase,
   BarChart3,
-  FileSpreadsheet
+  FileSpreadsheet,
+  LogIn,
+  LogOut,
+  CalendarDays
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { LeaveType, LeaveRequest, StaffPosition, STAFF_POSITIONS, TeacherAttendanceRecord } from '../../types';
@@ -37,6 +40,8 @@ import {
   exportDailyTeacherAttendanceExcel,
   exportMonthlyTeacherAttendanceExcel
 } from '../../services/excelService';
+import { WorkScheduleSettingsPanel } from './WorkScheduleSettingsPanel';
+import { getPersonCategory, getScheduleForDate } from '../../utils/workSchedule';
 
 const INDONESIAN_MONTHS_SHORT = [
   'Januari',
@@ -84,7 +89,8 @@ export const TeacherSelfieAttendance: React.FC = () => {
   const todayDateStr = new Date().toISOString().split('T')[0];
 
   // Active Main SubTab
-  const [activeSubTab, setActiveSubTab] = useState<'attendance' | 'leaves' | 'recap'>('attendance');
+  const [activeSubTab, setActiveSubTab] = useState<'attendance' | 'leaves' | 'recap' | 'schedule'>('attendance');
+  const [attendanceMode, setAttendanceMode] = useState<'checkin' | 'checkout'>('checkin');
 
   // Recap SubTab States
   const [recapMode, setRecapMode] = useState<'daily' | 'monthly'>('daily');
@@ -290,7 +296,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
     }
 
     setSelfieFeedback(null);
-    recordTeacherAttendance(selectedPersonId, capturedPhoto, locationData, notes);
+    recordTeacherAttendance(selectedPersonId, capturedPhoto, locationData, notes, attendanceMode);
     confetti({
       particleCount: 50,
       spread: 60,
@@ -308,6 +314,9 @@ export const TeacherSelfieAttendance: React.FC = () => {
     : activeStaff
     ? (activeStaff.assignedDuty || (activeStaff.department.includes('Keuangan') || activeStaff.department.includes('Keamanan') ? 'Karyawan' : 'Staff'))
     : 'Guru';
+  const selectedPersonCategory = getPersonCategory(selectedPersonId, staff);
+  const todaySchedule = getScheduleForDate(schoolProfile.workSchedule, selectedPersonCategory, todayDateStr);
+  const selectedTodayRecord = todayTeacherRecords.find((r) => r.teacherId === selectedPersonId);
 
   // ===================== LEAVE MANAGEMENT STATE =====================
   const [leaveStatusFilter, setLeaveStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
@@ -466,7 +475,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
             }`}
           >
             <Camera className="w-4 h-4" />
-            <span>Presensi Selfie & GPS</span>
+            <span>Presensi Masuk / Keluar</span>
           </button>
           <button
             onClick={() => setActiveSubTab('recap')}
@@ -495,6 +504,17 @@ export const TeacherSelfieAttendance: React.FC = () => {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setActiveSubTab('schedule')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+              activeSubTab === 'schedule'
+                ? 'bg-white text-emerald-950 font-extrabold shadow-md'
+                : 'text-emerald-100 hover:bg-white/10'
+            }`}
+          >
+            <CalendarDays className="w-4 h-4" />
+            <span>Jam Masuk & Keluar (Sen–Jum)</span>
+          </button>
         </div>
       </div>
 
@@ -503,10 +523,10 @@ export const TeacherSelfieAttendance: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Camera / Selfie capture */}
           <div className="lg:col-span-7 bg-white rounded-3xl p-6 shadow-xs border border-slate-200 flex flex-col">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
               <h3 className="font-bold text-slate-800 flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-emerald-600" />
-                Perekaman Presensi Selfie Guru & Karyawan
+                Perekaman Presensi Selfie Guru &amp; Karyawan
               </h3>
 
               {/* Selector for Person (Guru & Karyawan) */}
@@ -538,25 +558,75 @@ export const TeacherSelfieAttendance: React.FC = () => {
               </div>
             </div>
 
-            {/* Person Duty & Status Bar */}
-            <div className="mb-3.5 p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex items-center justify-between gap-3 text-xs">
+            {/* Check-In vs Check-Out Mode Selector */}
+            <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100 rounded-2xl mb-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAttendanceMode('checkin');
+                  setNotes('Piket pagi & mengajar kelas sentra');
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  attendanceMode === 'checkin'
+                    ? 'bg-emerald-700 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Presensi Masuk ({todaySchedule.checkIn} WIB)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAttendanceMode('checkout');
+                  setNotes('Penyelesaian tugas & piket pulang');
+                }}
+                className={`py-2 px-3 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  attendanceMode === 'checkout'
+                    ? 'bg-sky-700 text-white shadow-sm'
+                    : 'text-slate-600 hover:bg-white/60'
+                }`}
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Presensi Keluar ({todaySchedule.checkOut} WIB)</span>
+              </button>
+            </div>
+
+            {/* Person Duty & Dynamic Mon-Fri Schedule Bar */}
+            <div className="mb-3.5 p-3 bg-emerald-50/70 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
               <div className="flex items-center gap-2.5">
                 <span className="p-1.5 bg-emerald-600 text-white rounded-lg">
                   <Briefcase className="w-4 h-4" />
                 </span>
                 <div>
                   <div className="font-extrabold text-slate-900">{activePersonName}</div>
-                  <div className="text-[11px] text-emerald-800 flex items-center gap-1.5 font-medium">
+                  <div className="text-[11px] text-emerald-800 flex flex-wrap items-center gap-1.5 font-medium">
                     <span>Tugas / Jabatan:</span>
                     <span className="px-2 py-0.2 bg-emerald-200/80 text-emerald-950 font-black rounded-md">
                       {activePersonDuty}
                     </span>
-                    <span>• Status: Aktif</span>
+                    {selectedTodayRecord?.time && (
+                      <span className="text-[10px] font-mono text-emerald-700">
+                        • Masuk: {selectedTodayRecord.time.slice(0, 5)}
+                      </span>
+                    )}
+                    {selectedTodayRecord?.checkOutTime && (
+                      <span className="text-[10px] font-mono text-sky-700">
+                        • Keluar: {selectedTodayRecord.checkOutTime.slice(0, 5)}
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
-              <div className="text-right text-[11px] text-slate-500 font-mono hidden sm:block">
-                Batas Tepat Waktu: <strong className="text-amber-700">07:30 WIB</strong>
+              <div className="sm:text-right text-[11px] text-slate-600 font-mono bg-white/80 px-2.5 py-1.5 rounded-xl border border-emerald-100">
+                <div className="text-[10px] font-sans font-bold text-emerald-800">
+                  Jadwal {todaySchedule.dayLabel} ({selectedPersonCategory === 'karyawan' ? 'Karyawan' : 'Guru'})
+                  {todaySchedule.isWeekend ? ' • Akhir Pekan' : ''}
+                </div>
+                <div>
+                  Masuk <strong className="text-emerald-700">{todaySchedule.checkIn}</strong> • Keluar{' '}
+                  <strong className="text-sky-700">{todaySchedule.checkOut}</strong> WIB
+                </div>
               </div>
             </div>
 
@@ -659,9 +729,21 @@ export const TeacherSelfieAttendance: React.FC = () => {
               <button
                 onClick={handlePresensiSubmit}
                 disabled={!capturedPhoto}
-                className="px-6 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer"
+                className={`px-6 py-2.5 disabled:bg-slate-300 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer ${
+                  attendanceMode === 'checkout'
+                    ? 'bg-sky-700 hover:bg-sky-800'
+                    : 'bg-emerald-700 hover:bg-emerald-800'
+                }`}
               >
-                <CheckCircle2 className="w-4 h-4" /> Kirim Presensi Hari Ini
+                {attendanceMode === 'checkout' ? (
+                  <>
+                    <LogOut className="w-4 h-4" /> Kirim Presensi Keluar
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" /> Kirim Presensi Masuk
+                  </>
+                )}
               </button>
             </div>
 
@@ -771,9 +853,22 @@ export const TeacherSelfieAttendance: React.FC = () => {
                             <h5 className="text-xs font-bold text-slate-800 truncate">
                               {rec.teacherName}
                             </h5>
-                            <span className="text-[10px] font-mono text-slate-500 shrink-0">
-                              {rec.time} WIB
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0 text-[10px] font-mono">
+                              <span className="text-emerald-700 font-semibold">
+                                Masuk: {rec.time} WIB
+                              </span>
+                              {rec.checkOutTime && (
+                                <span
+                                  className={`px-1.5 py-0.5 rounded font-bold ${
+                                    rec.checkOutEarly
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-sky-100 text-sky-800'
+                                  }`}
+                                >
+                                  Keluar: {rec.checkOutTime} WIB
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             <span
@@ -1065,6 +1160,7 @@ export const TeacherSelfieAttendance: React.FC = () => {
                         <th className="py-3 px-4">Kategori</th>
                         <th className="py-3 px-4">Jabatan / Unit</th>
                         <th className="py-3 px-4">Jam Masuk</th>
+                        <th className="py-3 px-4">Jam Keluar</th>
                         <th className="py-3 px-4">Status</th>
                         <th className="py-3 px-4">Keterangan</th>
                         {canManageMasterData && <th className="py-3 px-4 text-right">Ubah Status</th>}
@@ -1107,6 +1203,21 @@ export const TeacherSelfieAttendance: React.FC = () => {
                             </td>
                             <td className="py-3 px-4 font-mono text-slate-600">
                               {rec ? `${rec.time} WIB` : '-'}
+                            </td>
+                            <td className="py-3 px-4 font-mono text-slate-600">
+                              {rec?.checkOutTime ? (
+                                <span
+                                  className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                                    rec.checkOutEarly
+                                      ? 'bg-amber-100 text-amber-800'
+                                      : 'bg-sky-100 text-sky-800'
+                                  }`}
+                                >
+                                  {rec.checkOutTime} WIB
+                                </span>
+                              ) : (
+                                '-'
+                              )}
                             </td>
                             <td className="py-3 px-4">
                               <span
@@ -1271,6 +1382,9 @@ export const TeacherSelfieAttendance: React.FC = () => {
           </div>
         );
       })()}
+
+      {/* ======================= TAB 4: PENGATURAN JAM MASUK & KELUAR (SENIN - JUM'AT) ======================= */}
+      {activeSubTab === 'schedule' && <WorkScheduleSettingsPanel />}
 
       {/* ======================= TAB 2: LEAVE & PERMITS (ACC KEPALA SEKOLAH) ======================= */}
       {activeSubTab === 'leaves' && (

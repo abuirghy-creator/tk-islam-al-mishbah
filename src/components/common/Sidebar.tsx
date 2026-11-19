@@ -15,7 +15,9 @@ import {
   ShieldCheck,
   ChevronRight,
   School,
-  Rocket
+  Rocket,
+  Clock,
+  ClipboardCheck
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -55,17 +57,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
       roles: ['guru', 'pegawai', 'ortu', 'admin', 'kepala_sekolah', 'owner']
     },
     {
+      key: 'attendance-hub',
+      label: 'Absensi Murid & Guru',
+      icon: ClipboardCheck,
+      badge: 'Terpadu',
+      roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
+    },
+    {
+      key: 'student-att',
+      label: 'Absensi Murid (Scan)',
+      icon: ScanLine,
+      badge: 'Barcode & Manual',
+      roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
+    },
+    {
       key: 'teacher-att',
-      label: 'Presensi & Cuti Guru/Staf',
+      label: 'Absensi & Cuti Guru/Staf',
       icon: Camera,
       badge: pendingLeavesCount > 0 ? `${pendingLeavesCount} Butuh ACC` : 'ACC Pemilik',
       roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
     },
     {
-      key: 'student-att',
-      label: 'Presensi Scan Siswa',
-      icon: ScanLine,
-      badge: 'Barcode & Manual',
+      key: 'schedule-guru',
+      label: 'Jadwal Guru',
+      icon: Clock,
+      badge: "Senin–Jum'at",
+      roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
+    },
+    {
+      key: 'schedule-karyawan',
+      label: 'Jadwal Karyawan',
+      icon: Clock,
+      badge: "Senin–Jum'at",
       roles: ['guru', 'pegawai', 'admin', 'kepala_sekolah', 'owner']
     },
     {

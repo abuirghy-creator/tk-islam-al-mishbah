@@ -21,7 +21,8 @@ import {
   Smartphone,
   Home,
   ArrowLeft,
-  Wifi
+  Wifi,
+  Database
 } from 'lucide-react';
 
 interface PublishManagerModalProps {
@@ -51,9 +52,11 @@ export const PublishManagerModal: React.FC<PublishManagerModalProps> = ({
     realtimeConnected,
     connectedClientsCount,
     lastSyncedEvent,
+    databaseSyncInfo,
     publishUpdates,
     saveDraftToServer,
     pullLatestPublished,
+    syncToDatabaseNow,
     exportBackupJson,
     importBackupJson
   } = useApp();
@@ -62,6 +65,7 @@ export const PublishManagerModal: React.FC<PublishManagerModalProps> = ({
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [justPublishedVersion, setJustPublishedVersion] = useState<number | null>(null);
   const [copiedUrlKey, setCopiedUrlKey] = useState<string | null>(null);
+  const [copiedSql, setCopiedSql] = useState<boolean>(false);
   const [savingDraft, setSavingDraft] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -138,6 +142,38 @@ export const PublishManagerModal: React.FC<PublishManagerModalProps> = ({
       type: result.success ? 'success' : 'error',
       text: result.message
     });
+  };
+
+  const handleSyncDatabaseNow = async () => {
+    setFeedback(null);
+    const result = await syncToDatabaseNow('Sinkronisasi Manual ke Database Supabase');
+    setFeedback({
+      type: result.success ? (result.cloudSynced ? 'success' : 'info') : 'error',
+      text: result.message
+    });
+  };
+
+  const handleCopySupabaseSql = async () => {
+    try {
+      const res = await fetch('/api/database/schema', { cache: 'no-store' });
+      const data = (await res.json()) as { success?: boolean; sql?: string };
+      if (!data.sql) {
+        setFeedback({ type: 'error', text: 'Skema SQL tidak ditemukan di server.' });
+        return;
+      }
+      await navigator.clipboard.writeText(data.sql);
+      setCopiedSql(true);
+      setTimeout(() => setCopiedSql(false), 2500);
+      setFeedback({
+        type: 'info',
+        text: 'Script SQL Supabase berhasil disalin. Tempel dan jalankan di Supabase Dashboard → SQL Editor → Run, lalu klik "Sinkronkan ke Database".'
+      });
+    } catch {
+      setFeedback({
+        type: 'error',
+        text: 'Gagal menyalin SQL secara otomatis. Pastikan izin clipboard browser aktif.'
+      });
+    }
   };
 
   const handleCopyUrl = async (urlToCopy: string = currentUrl, key = 'main') => {
@@ -264,6 +300,89 @@ export const PublishManagerModal: React.FC<PublishManagerModalProps> = ({
               <span className="font-semibold leading-relaxed">{feedback.text}</span>
             </div>
           )}
+
+          {/* Supabase Database Connection & Auto-Save Card */}
+          <div
+            className={`p-4 rounded-2xl border space-y-3 ${
+              databaseSyncInfo.supabaseStatus === 'connected' &&
+              databaseSyncInfo.accountsTableStatus === 'connected'
+                ? 'bg-emerald-50/80 border-emerald-200 text-emerald-950'
+                : 'bg-amber-50/80 border-amber-300 text-amber-950'
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Database
+                  className={`w-4 h-4 shrink-0 ${
+                    databaseSyncInfo.supabaseStatus === 'connected'
+                      ? 'text-emerald-700'
+                      : 'text-amber-700'
+                  }`}
+                />
+                <div>
+                  <div className="font-extrabold text-xs">
+                    Database Supabase Terkoneksi
+                    {databaseSyncInfo.supabaseProjectUrl
+                      ? ` (${databaseSyncInfo.supabaseProjectUrl.replace(/^https?:\/\//, '')})`
+                      : ''}
+                  </div>
+                  <div className="text-[11px] opacity-80">
+                    Portal Store:{' '}
+                    <strong>
+                      {databaseSyncInfo.supabaseStatus === 'connected'
+                        ? 'Tersambung & Auto-Save Aktif'
+                        : databaseSyncInfo.supabaseStatus === 'rls_blocked'
+                        ? 'Izin Tabel / RLS Perlu Dibuka'
+                        : databaseSyncInfo.supabaseStatus === 'needs_table_setup'
+                        ? 'Tabel Belum Dibuat'
+                        : 'Mode Cache Lokal'}
+                    </strong>
+                    {' · '}Tabel Akun:{' '}
+                    <strong>
+                      {databaseSyncInfo.accountsTableStatus === 'connected'
+                        ? 'Tersambung'
+                        : 'Perlu Setup Tabel'}
+                    </strong>
+                    {databaseSyncInfo.lastCloudSyncAt
+                      ? ` · Sinkron Cloud: ${formatTimestamp(databaseSyncInfo.lastCloudSyncAt)}`
+                      : ''}
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleSyncDatabaseNow}
+                disabled={isSyncing || isPublishing}
+                className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-60 text-white font-bold rounded-xl flex items-center gap-1.5 shrink-0 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Menyinkronkan...' : 'Sinkronkan ke Database'}</span>
+              </button>
+            </div>
+
+            {(databaseSyncInfo.supabaseStatus !== 'connected' ||
+              databaseSyncInfo.accountsTableStatus !== 'connected') && (
+              <div className="p-3 rounded-xl bg-white/90 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                <div className="text-[11px] text-slate-700 leading-relaxed">
+                  Auto-save lokal tetap berjalan aman. Agar tulisan otomatis masuk ke tabel Supabase Cloud (
+                  <code className="font-mono text-[10px]">portal_store</code>,{' '}
+                  <code className="font-mono text-[10px]">portal_accounts</code>,{' '}
+                  <code className="font-mono text-[10px]">student_attendance</code>,{' '}
+                  <code className="font-mono text-[10px]">teacher_attendance</code>,{' '}
+                  <code className="font-mono text-[10px]">work_schedules</code>), jalankan skema SQL sekali di Supabase SQL Editor.
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopySupabaseSql}
+                  className="px-3 py-1.5 bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold rounded-lg flex items-center gap-1.5 shrink-0 cursor-pointer"
+                >
+                  {copiedSql ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedSql ? 'SQL Disalin' : 'Salin SQL Setup'}</span>
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Server Status + Auto-Save Status Comparison */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

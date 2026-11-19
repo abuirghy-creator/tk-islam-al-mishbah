@@ -24,7 +24,8 @@ import {
   PublishMeta,
   AppSnapshot,
   AutoSaveStatus,
-  RealtimeSyncEvent
+  RealtimeSyncEvent,
+  DatabaseSyncInfo
 } from '../types';
 import { SCHOOL_ASSETS } from '../assets/images';
 import {
@@ -51,6 +52,15 @@ import {
   INITIAL_NOTIFICATIONS
 } from '../data/initialData';
 
+import {
+  DEFAULT_WORK_SCHEDULE,
+  getPersonCategory,
+  getScheduleForDate,
+  isCheckInLate,
+  isCheckOutEarly,
+  normalizeWorkSchedule
+} from '../utils/workSchedule';
+
 export const INITIAL_SCHOOL_PROFILE: SchoolProfile = {
   name: 'TK ISLAM AL MISHBAH',
   motto: 'Mencetak Generasi Qur\'ani yang Cerdas, Berakhlak Mulia & Mandiri',
@@ -61,6 +71,7 @@ export const INITIAL_SCHOOL_PROFILE: SchoolProfile = {
   email: 'info@tk-almishbah.sch.id',
   principalName: 'Hj. Siti Khadijah, M.Pd.I',
   foundationName: 'Yayasan Pendidikan Islam Al Mishbah',
+  workSchedule: DEFAULT_WORK_SCHEDULE,
   schoolCoordinates: {
     lat: -6.531200,
     lng: 106.799800,
@@ -142,14 +153,16 @@ interface AppContextType {
     teacherId: string,
     selfieUrl: string,
     locationData: TeacherAttendanceRecord['location'],
-    notes?: string
+    notes?: string,
+    mode?: 'checkin' | 'checkout'
   ) => void;
   upsertTeacherAttendance: (
     teacherId: string,
     date: string,
     status: TeacherAttendanceRecord['status'],
     notes?: string,
-    time?: string
+    time?: string,
+    checkOutTime?: string
   ) => void;
   recordStudentAttendance: (
     record: Omit<StudentAttendanceRecord, 'id' | 'date' | 'time'>
@@ -215,9 +228,16 @@ interface AppContextType {
   realtimeConnected: boolean;
   connectedClientsCount: number;
   lastSyncedEvent: RealtimeSyncEvent | null;
+  databaseSyncInfo: DatabaseSyncInfo;
   publishUpdates: (note?: string) => Promise<{ success: boolean; message: string; version?: number }>;
   saveDraftToServer: () => Promise<{ success: boolean; message: string }>;
   pullLatestPublished: () => Promise<{ success: boolean; updated: boolean; message: string }>;
+  syncToDatabaseNow: (actionLabel?: string) => Promise<{
+    success: boolean;
+    cloudSynced: boolean;
+    message: string;
+    database?: DatabaseSyncInfo;
+  }>;
   exportBackupJson: () => string;
   importBackupJson: (rawJson: string) => { success: boolean; message: string };
 }
@@ -647,6 +667,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (!parsed.logoUrl || parsed.logoUrl.includes('tk_al_mishbah_logo') || parsed.logoUrl.includes('1792761852277')) {
           parsed.logoUrl = SCHOOL_ASSETS.logo;
         }
+        parsed.workSchedule = normalizeWorkSchedule(parsed.workSchedule);
         return parsed;
       } catch (e) {
         console.error(e);
@@ -791,6 +812,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false);
   const [connectedClientsCount, setConnectedClientsCount] = useState<number>(1);
   const [lastSyncedEvent, setLastSyncedEvent] = useState<RealtimeSyncEvent | null>(null);
+  const [databaseSyncInfo, setDatabaseSyncInfo] = useState<DatabaseSyncInfo>({
+    supabaseStatus: 'disconnected',
+    accountsTableStatus: 'disconnected',
+    storage: 'local-cache',
+    supabaseProjectUrl: 'https://chdaohcievegwnwphxtx.supabase.co',
+    supabaseHint: null,
+    lastCloudSyncAt: null
+  });
 
   const stateRef = useRef({
     schoolProfile,
@@ -1012,7 +1041,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const applySnapshot = (snapshot: AppSnapshot, version: number, storeId?: string) => {
     isRemoteUpdateRef.current = true;
     try {
-      if (snapshot.schoolProfile) setSchoolProfile(snapshot.schoolProfile);
+      if (snapshot.schoolProfile) {
+        setSchoolProfile({
+          ...snapshot.schoolProfile,
+          workSchedule: normalizeWorkSchedule(snapshot.schoolProfile.workSchedule)
+        });
+      }
       if (Array.isArray(snapshot.users)) {
         const normalizedUsers = snapshot.users.map((u) => ({
           ...u,
@@ -1193,6 +1227,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const data = (await res.json()) as {
         success: boolean;
         meta?: PublishMeta;
+        database?: DatabaseSyncInfo;
         snapshot?: AppSnapshot;
       };
 
@@ -1204,6 +1239,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       persistPendingKeys();
 
       setServerReachable(true);
+      if (data.database) {
+        setDatabaseSyncInfo(data.database);
+      }
       syncMetaDisplay(data.meta);
       localPublishedVersionRef.current = data.meta.publishedVersion;
       setLocalPublishedVersion(data.meta.publishedVersion);
@@ -1400,6 +1438,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         success: boolean;
         message?: string;
         meta?: PublishMeta;
+        database?: DatabaseSyncInfo;
       };
       if (!res.ok || !data.success || !data.meta) {
         return {
@@ -1414,6 +1453,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       replaceKeysRef.current.clear();
       actionLabelsRef.current = [];
       setServerReachable(true);
+      if (data.database) {
+        setDatabaseSyncInfo(data.database);
+      }
       syncMetaDisplay(data.meta);
       localPublishedVersionRef.current = data.meta.publishedVersion;
       setLocalPublishedVersion(data.meta.publishedVersion);
@@ -1441,6 +1483,91 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     } finally {
       setIsPublishing(false);
+    }
+  };
+
+  const syncToDatabaseNow = async (
+    actionLabel = 'Sinkronisasi & Auto-Save Database'
+  ): Promise<{
+    success: boolean;
+    cloudSynced: boolean;
+    message: string;
+    database?: DatabaseSyncInfo;
+  }> => {
+    setIsSyncing(true);
+    setAutoSaveStatus('saving');
+    try {
+      if (dirtyKeysRef.current.size > 0) {
+        await flushAutoSave();
+      }
+      const snapshot = buildSnapshotFromState(stateRef.current);
+      const activeUser = stateRef.current.currentUser;
+      const res = await fetchWithRetry('/api/sync/database', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientIdRef.current
+        },
+        body: JSON.stringify({
+          snapshot,
+          savedBy: `${activeUser.name} (@${activeUser.username})`,
+          actionLabel,
+          clientId: clientIdRef.current
+        })
+      });
+
+      const data = (await res.json().catch(() => ({}))) as {
+        success?: boolean;
+        cloudSynced?: boolean;
+        message?: string;
+        meta?: PublishMeta;
+        database?: DatabaseSyncInfo;
+      };
+
+      if (!res.ok || !data.success) {
+        setAutoSaveStatus('offline');
+        return {
+          success: false,
+          cloudSynced: false,
+          message: data.message || 'Gagal menyinkronkan data ke server database.',
+          database: data.database
+        };
+      }
+
+      setServerReachable(true);
+      if (data.database) {
+        setDatabaseSyncInfo(data.database);
+      }
+      if (data.meta) {
+        syncMetaDisplay(data.meta);
+        localPublishedVersionRef.current = data.meta.publishedVersion;
+        setLocalPublishedVersion(data.meta.publishedVersion);
+        if (data.meta.storeId) setLocalStoreId(data.meta.storeId);
+      }
+
+      dirtyKeysRef.current.clear();
+      inFlightKeysRef.current.clear();
+      persistPendingKeys();
+      setHasPendingChanges(false);
+      setLastEditedAt(null);
+      setAutoSaveStatus('synced');
+
+      return {
+        success: true,
+        cloudSynced: Boolean(data.cloudSynced),
+        message: data.message || 'Data berhasil disinkronkan dan disimpan otomatis ke database.',
+        database: data.database
+      };
+    } catch {
+      setServerReachable(false);
+      setAutoSaveStatus('offline');
+      return {
+        success: false,
+        cloudSynced: false,
+        message: 'Koneksi server sedang terputus. Perubahan tetap aman di browser lokal dan akan disinkronkan ulang otomatis.'
+      };
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -1476,7 +1603,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!snap || (!snap.schoolProfile && !Array.isArray(snap.students))) {
         return { success: false, message: 'Format file backup JSON tidak sesuai.' };
       }
-      if (snap.schoolProfile) setSchoolProfile(snap.schoolProfile);
+      if (snap.schoolProfile) {
+        setSchoolProfile({
+          ...snap.schoolProfile,
+          workSchedule: normalizeWorkSchedule(snap.schoolProfile.workSchedule)
+        });
+      }
       if (Array.isArray(snap.users)) setUsers(deduplicateUsersById(snap.users));
       if (Array.isArray(snap.students)) setStudents(snap.students);
       if (Array.isArray(snap.teachers)) setTeachers(snap.teachers);
@@ -1550,11 +1682,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           success: boolean;
           bootstrapped?: boolean;
           meta?: PublishMeta;
+          database?: DatabaseSyncInfo;
           snapshot?: AppSnapshot | null;
         };
         if (!isMounted || !data.success || !data.meta) return;
         hasSeededEmptyServerRef.current = true;
         setServerReachable(true);
+        if (data.database) {
+          setDatabaseSyncInfo(data.database);
+        }
         syncMetaDisplay(data.meta);
         if (
           data.snapshot &&
@@ -1830,9 +1966,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           cache: 'no-store'
         });
         if (!res.ok) return;
-        const data = (await res.json()) as { success: boolean; meta?: PublishMeta };
+        const data = (await res.json()) as {
+          success: boolean;
+          meta?: PublishMeta;
+          database?: DatabaseSyncInfo;
+        };
         if (!isMounted || !data.meta) return;
         setServerReachable(true);
+        if (data.database) {
+          setDatabaseSyncInfo(data.database);
+        }
         syncMetaDisplay(data.meta);
 
         if (!data.meta.hasPublishedSnapshot) {
@@ -2009,12 +2152,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginWithSync = async (username: string, password?: string): Promise<boolean> => {
-    if (login(username, password)) {
-      return true;
-    }
     const cleanInput = username.trim().toLowerCase();
     const cleanPass = password ?? '';
     if (!cleanInput || !cleanPass) return false;
+
+    try {
+      const authRes = await fetch('/api/auth/login', {
+        method: 'POST',
+        credentials: 'same-origin',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-client-id': clientIdRef.current
+        },
+        body: JSON.stringify({
+          username: cleanInput,
+          password: cleanPass
+        })
+      });
+
+      const authData = (await authRes.json().catch(() => ({}))) as {
+        success?: boolean;
+        serverEmpty?: boolean;
+        user?: User;
+        meta?: PublishMeta;
+        snapshot?: AppSnapshot | null;
+      };
+
+      if (authRes.ok && authData.success && authData.user) {
+        setServerReachable(true);
+        if (authData.meta) {
+          syncMetaDisplay(authData.meta);
+        }
+        if (
+          authData.snapshot &&
+          authData.meta?.hasPublishedSnapshot &&
+          dirtyKeysRef.current.size === 0 &&
+          inFlightKeysRef.current.size === 0 &&
+          !isFlushingRef.current
+        ) {
+          applySnapshot(authData.snapshot, authData.meta.publishedVersion, authData.meta.storeId);
+        } else {
+          setUsers((prev) => {
+            const exists = prev.some((u) => u.id === authData.user!.id);
+            return exists
+              ? prev.map((u) => (u.id === authData.user!.id ? authData.user! : u))
+              : [...prev, authData.user!];
+          });
+        }
+        setCurrentUser(authData.user);
+        setIsAuthenticated(true);
+        addNotification({
+          title: 'Berhasil Masuk',
+          message: `Selamat datang kembali, ${authData.user.name} (@${authData.user.username})`,
+          type: 'info',
+          forRole: authData.user.role
+        });
+        return true;
+      }
+
+      // If database explicitly rejected the credentials, do not bypass with stale localStorage passwords
+      if (authRes.status === 401 && authData.serverEmpty === false) {
+        return false;
+      }
+    } catch {
+      // ignore network error and fall back to offline cache below
+    }
+
+    if (login(username, password)) {
+      return true;
+    }
 
     try {
       const res = await fetch('/api/publish/snapshot', {
@@ -3012,44 +3219,119 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     teacherId: string,
     selfieUrl: string,
     locationData: TeacherAttendanceRecord['location'],
-    notes?: string
+    notes?: string,
+    mode: 'checkin' | 'checkout' = 'checkin'
   ) => {
     if (currentUser.role === 'ortu') return;
     const teacher = teachers.find((t) => t.id === teacherId);
     const staffMember = staff.find((s) => s.id === teacherId);
     const personName = teacher?.name || staffMember?.name || currentUser.name;
+    const personCategory = getPersonCategory(teacherId, staff);
+    const categoryTitle = personCategory === 'karyawan' ? 'Karyawan' : 'Guru';
+
     const now = new Date();
     const date = now.toISOString().split('T')[0];
     const time = now.toTimeString().split(' ')[0];
+    const schedule = getScheduleForDate(schoolProfile.workSchedule, personCategory, now);
 
-    // Cutoff 07:30 WIB
-    const hour = now.getHours();
-    const minute = now.getMinutes();
-    const isLate = hour > 7 || (hour === 7 && minute > 30);
+    if (mode === 'checkout') {
+      const early = isCheckOutEarly(time, schedule.checkOut);
+      const checkoutNote =
+        notes?.trim() ||
+        (early
+          ? `Presensi keluar lebih awal (${time.slice(0, 5)} WIB; jadwal ${schedule.dayLabel}: ${schedule.checkOut} WIB)`
+          : `Presensi keluar sesuai jadwal ${schedule.dayLabel} (${schedule.checkOut} WIB)`);
+
+      setTeacherAttendance((prev) => {
+        const existingIdx = prev.findIndex((r) => r.teacherId === teacherId && r.date === date);
+        if (existingIdx >= 0) {
+          const updated = [...prev];
+          updated[existingIdx] = {
+            ...updated[existingIdx],
+            checkOutTime: time,
+            checkOutSelfieUrl: selfieUrl,
+            checkOutLocation: locationData,
+            checkOutNotes: checkoutNote,
+            checkOutEarly: early
+          };
+          return updated;
+        }
+        const newRecord: TeacherAttendanceRecord = {
+          id: `att-t-${Date.now()}`,
+          date,
+          time: `${schedule.checkIn}:00`,
+          teacherId,
+          teacherName: personName,
+          selfieUrl,
+          status: 'Hadir Tepat Waktu',
+          notes: `Presensi keluar tercatat (${categoryTitle} - ${schedule.dayLabel})`,
+          location: locationData,
+          checkOutTime: time,
+          checkOutSelfieUrl: selfieUrl,
+          checkOutLocation: locationData,
+          checkOutNotes: checkoutNote,
+          checkOutEarly: early
+        };
+        return [newRecord, ...prev];
+      });
+
+      addNotification({
+        title: 'Presensi Keluar Pegawai Tercatat',
+        message: `${personName} (${categoryTitle}) mencatat presensi keluar pada ${time} WIB (${
+          early ? `lebih awal dari jadwal ${schedule.checkOut}` : `sesuai jadwal ${schedule.checkOut}`
+        } WIB).`,
+        type: early ? 'warning' : 'success',
+        forRole: 'all',
+        linkTab: 'teacher-att'
+      });
+      markEdited(['teacherAttendance', 'notifications'], `Presensi Keluar ${personName}`);
+      return;
+    }
+
+    const isLate = isCheckInLate(time, schedule.checkIn);
     const status = isLate ? 'Terlambat' : 'Hadir Tepat Waktu';
+    const checkInNote =
+      notes?.trim() ||
+      (isLate
+        ? `Hadir lewat batas jadwal ${schedule.dayLabel} ${categoryTitle} (${schedule.checkIn} WIB)`
+        : `Presensi masuk tepat waktu (jadwal ${schedule.dayLabel}: ${schedule.checkIn} WIB)`);
 
-    const newRecord: TeacherAttendanceRecord = {
-      id: `att-t-${Date.now()}`,
-      date,
-      time,
-      teacherId,
-      teacherName: personName,
-      selfieUrl,
-      status,
-      notes: notes || (isLate ? 'Hadir lewat batas 07:30 WIB' : 'Presensi pagi tepat waktu'),
-      location: locationData
-    };
-
-    setTeacherAttendance((prev) => [newRecord, ...prev]);
+    setTeacherAttendance((prev) => {
+      const existingIdx = prev.findIndex((r) => r.teacherId === teacherId && r.date === date);
+      if (existingIdx >= 0) {
+        const updated = [...prev];
+        updated[existingIdx] = {
+          ...updated[existingIdx],
+          time,
+          selfieUrl,
+          status,
+          notes: checkInNote,
+          location: locationData
+        };
+        return updated;
+      }
+      const newRecord: TeacherAttendanceRecord = {
+        id: `att-t-${Date.now()}`,
+        date,
+        time,
+        teacherId,
+        teacherName: personName,
+        selfieUrl,
+        status,
+        notes: checkInNote,
+        location: locationData
+      };
+      return [newRecord, ...prev];
+    });
 
     addNotification({
-      title: 'Presensi Pegawai Tercatat',
-      message: `${personName} berhasil melakukan selfie presensi (${status}) pada ${time} WIB.`,
+      title: 'Presensi Masuk Pegawai Tercatat',
+      message: `${personName} (${categoryTitle}) berhasil presensi masuk (${status}) pada ${time} WIB.`,
       type: isLate ? 'warning' : 'success',
       forRole: 'all',
       linkTab: 'teacher-att'
     });
-    markEdited(['teacherAttendance', 'notifications'], `Presensi ${personName}`);
+    markEdited(['teacherAttendance', 'notifications'], `Presensi Masuk ${personName}`);
   };
 
   const upsertTeacherAttendance = (
@@ -3057,24 +3339,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     date: string,
     status: TeacherAttendanceRecord['status'],
     notes?: string,
-    time?: string
+    time?: string,
+    checkOutTime?: string
   ) => {
     if (!isAccountOwner) return;
     const teacher = teachers.find((t) => t.id === teacherId);
     const staffMember = staff.find((s) => s.id === teacherId);
     const personName = teacher?.name || staffMember?.name || currentUser.name;
+    const personCategory = getPersonCategory(teacherId, staff);
+    const schedule = getScheduleForDate(schoolProfile.workSchedule, personCategory, date);
     const personPhoto =
       teacher?.photoUrl ||
       staffMember?.photoUrl ||
       'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=300&q=80';
 
+    const [schedH, schedM] = schedule.checkIn.split(':').map(Number);
+    const lateMinute = ((schedM || 0) + 10) % 60;
+    const lateHour = (schedH || 7) + (((schedM || 0) + 10) >= 60 ? 1 : 0);
+    const lateFallback = `${String(lateHour).padStart(2, '0')}:${String(lateMinute).padStart(2, '0')}:00`;
+
     const defaultTime =
       time ||
       (status === 'Hadir Tepat Waktu'
-        ? '07:12:00'
+        ? `${schedule.checkIn}:00`
         : status === 'Terlambat'
-        ? '07:40:00'
-        : '07:00:00');
+        ? lateFallback
+        : `${schedule.checkIn}:00`);
 
     const defaultNotes =
       notes !== undefined
@@ -3082,18 +3372,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : status === 'Hadir Tepat Waktu'
         ? 'Input/Pembaruan presensi harian oleh pemilik akun'
         : status === 'Terlambat'
-        ? 'Tercatat terlambat lewat 07:30 WIB'
+        ? `Tercatat terlambat lewat jadwal ${schedule.dayLabel} (${schedule.checkIn} WIB)`
         : `${status} (Tercatat pada rekap harian)`;
 
     setTeacherAttendance((prev) => {
       const idx = prev.findIndex((r) => r.teacherId === teacherId && r.date === date);
       if (idx >= 0) {
         const updated = [...prev];
+        const nextCheckOut = checkOutTime !== undefined ? checkOutTime : updated[idx].checkOutTime;
         updated[idx] = {
           ...updated[idx],
           status,
           time: time || updated[idx].time || defaultTime,
-          notes: defaultNotes
+          notes: defaultNotes,
+          ...(nextCheckOut
+            ? {
+                checkOutTime: nextCheckOut,
+                checkOutEarly: isCheckOutEarly(nextCheckOut, schedule.checkOut)
+              }
+            : {})
         };
         return updated;
       }
@@ -3106,6 +3403,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         selfieUrl: personPhoto,
         status,
         notes: defaultNotes,
+        ...(checkOutTime
+          ? {
+              checkOutTime,
+              checkOutEarly: isCheckOutEarly(checkOutTime, schedule.checkOut)
+            }
+          : {}),
         location: {
           lat: schoolProfile.schoolCoordinates.lat,
           lng: schoolProfile.schoolCoordinates.lng,
@@ -3393,15 +3696,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       return;
     }
-    setSchoolProfile((prev) => ({ ...prev, ...updated }));
+    setSchoolProfile((prev) => {
+      const merged: SchoolProfile = {
+        ...prev,
+        ...updated,
+        workSchedule: normalizeWorkSchedule(updated.workSchedule || prev.workSchedule)
+      };
+      return merged;
+    });
     addNotification({
-      title: 'Profil Sekolah Diperbarui',
-      message: 'Identitas, logo, dan motto TK Islam Al Mishbah berhasil diperbarui.',
+      title: updated.workSchedule && Object.keys(updated).length === 1
+        ? 'Jadwal Jam Masuk & Keluar Diperbarui'
+        : 'Profil Sekolah Diperbarui',
+      message: updated.workSchedule && Object.keys(updated).length === 1
+        ? 'Pengaturan jam masuk & jam keluar Guru dan Karyawan (Senin – Jum\'at) berhasil disimpan dan disinkronkan.'
+        : 'Identitas, logo, dan pengaturan TK Islam Al Mishbah berhasil diperbarui.',
       type: 'success',
       forRole: 'all',
-      linkTab: 'school-profile'
+      linkTab: updated.workSchedule && Object.keys(updated).length === 1 ? 'teacher-att' : 'school-profile'
     });
-    markEdited(['schoolProfile', 'notifications'], 'Pembaruan Profil Sekolah');
+    markEdited(
+      ['schoolProfile', 'notifications'],
+      updated.workSchedule && Object.keys(updated).length === 1
+        ? 'Pengaturan Jam Kerja Senin-Jumat'
+        : 'Pembaruan Profil Sekolah'
+    );
   };
 
   // Leave & Permits Management (Pengajuan oleh Guru/Staf & Pemilik Akun; ACC/Edit/Hapus hanya Pemilik Akun)
@@ -3691,9 +4010,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         realtimeConnected,
         connectedClientsCount,
         lastSyncedEvent,
+        databaseSyncInfo,
         publishUpdates,
         saveDraftToServer,
         pullLatestPublished,
+        syncToDatabaseNow,
         exportBackupJson,
         importBackupJson
       }}

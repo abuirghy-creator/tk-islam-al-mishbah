@@ -27,12 +27,14 @@ import {
   EyeOff,
   Rocket,
   X,
-  AlertTriangle
+  AlertTriangle,
+  Clock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { PhotoUploadModal } from '../common/PhotoUploadModal';
 import { GoogleMapsCoordinatePicker } from './GoogleMapsCoordinatePicker';
 import { compressImageFile } from '../../utils/imageCompressor';
+import { WorkScheduleSettingsPanel } from '../attendance/WorkScheduleSettingsPanel';
 
 interface SchoolProfileViewProps {
   onOpenPublishModal?: () => void;
@@ -54,8 +56,8 @@ export const SchoolProfileView: React.FC<SchoolProfileViewProps> = ({ onOpenPubl
 
   const canEdit = canEditSchoolData;
 
-  // Active Tab: School Identity vs Owner Management (Pemilik Baru)
-  const [activeTab, setActiveTab] = useState<'school' | 'owner'>('school');
+  // Active Tab: School Identity vs Work Schedule vs Owner Management (Pemilik Baru)
+  const [activeTab, setActiveTab] = useState<'school' | 'schedule' | 'owner'>('school');
 
   // School Form state initialized from reactive schoolProfile
   const [name, setName] = useState(schoolProfile.name);
@@ -376,7 +378,7 @@ export const SchoolProfileView: React.FC<SchoolProfileViewProps> = ({ onOpenPubl
       )}
 
       {/* Sub-Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 pb-2">
         <button
           onClick={() => setActiveTab('school')}
           className={`px-4 py-2.5 rounded-2xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
@@ -386,7 +388,19 @@ export const SchoolProfileView: React.FC<SchoolProfileViewProps> = ({ onOpenPubl
           }`}
         >
           <School className="w-4 h-4" />
-          <span>Profil & Identitas Sekolah</span>
+          <span>Profil &amp; Identitas Sekolah</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('schedule')}
+          className={`px-4 py-2.5 rounded-2xl font-bold text-xs flex items-center gap-2 transition-all cursor-pointer ${
+            activeTab === 'schedule'
+              ? 'bg-teal-700 text-white shadow-md'
+              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span>Jam Masuk &amp; Keluar (Sen–Jum)</span>
         </button>
 
         <button
@@ -404,6 +418,9 @@ export const SchoolProfileView: React.FC<SchoolProfileViewProps> = ({ onOpenPubl
           </span>
         </button>
       </div>
+
+      {/* ======================= TAB: WORK SCHEDULE SENIN - JUM'AT ======================= */}
+      {activeTab === 'schedule' && <WorkScheduleSettingsPanel />}
 
       {/* ======================= TAB 1: SCHOOL IDENTITY ======================= */}
       {activeTab === 'school' && (

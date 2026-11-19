@@ -348,6 +348,7 @@ export const exportDailyTeacherAttendancePDF = (
       person.name,
       person.roleLabel,
       rec ? rec.time : '-',
+      rec?.checkOutTime ? rec.checkOutTime : '-',
       rec ? rec.status.toUpperCase() : 'BELUM PRESENSI',
       rec?.location ? (rec.location.inRadius ? `Dalam (${rec.location.distanceMeters}m)` : `Luar (${rec.location.distanceMeters}m)`) : '-',
       rec?.notes || '-'
@@ -356,7 +357,7 @@ export const exportDailyTeacherAttendancePDF = (
 
   autoTable(doc, {
     startY: 70,
-    head: [['No', 'Kategori', 'NUPTK / NIP', 'Nama Pegawai', 'Jabatan / Unit', 'Jam', 'Status', 'GPS', 'Keterangan']],
+    head: [['No', 'Kategori', 'NUPTK / NIP', 'Nama Pegawai', 'Jabatan / Unit', 'Jam Masuk', 'Jam Keluar', 'Status', 'GPS', 'Keterangan']],
     body: tableRows,
     theme: 'grid',
     headStyles: {
@@ -364,26 +365,27 @@ export const exportDailyTeacherAttendancePDF = (
       textColor: [255, 255, 255],
       fontStyle: 'bold',
       halign: 'center',
-      fontSize: 7.5
+      fontSize: 7.2
     },
     styles: {
-      fontSize: 7.2,
-      cellPadding: 2,
+      fontSize: 7,
+      cellPadding: 1.8,
       valign: 'middle'
     },
     columnStyles: {
       0: { halign: 'center', cellWidth: 8 },
-      1: { halign: 'center', cellWidth: 16 },
-      2: { halign: 'center', cellWidth: 22 },
-      3: { cellWidth: 34 },
-      4: { cellWidth: 24 },
+      1: { halign: 'center', cellWidth: 15 },
+      2: { halign: 'center', cellWidth: 20 },
+      3: { cellWidth: 30 },
+      4: { cellWidth: 22 },
       5: { halign: 'center', cellWidth: 14 },
-      6: { halign: 'center', cellWidth: 24 },
-      7: { halign: 'center', cellWidth: 18 },
-      8: { cellWidth: 'auto' }
+      6: { halign: 'center', cellWidth: 14 },
+      7: { halign: 'center', cellWidth: 22 },
+      8: { halign: 'center', cellWidth: 16 },
+      9: { cellWidth: 'auto' }
     },
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 6) {
+      if (data.section === 'body' && data.column.index === 7) {
         const val = String(data.cell.raw || '');
         if (val === 'HADIR TEPAT WAKTU') {
           data.cell.styles.textColor = [5, 150, 105];

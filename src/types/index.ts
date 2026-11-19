@@ -1,5 +1,20 @@
 export type UserRole = 'guru' | 'pegawai' | 'ortu' | 'admin' | 'kepala_sekolah' | 'owner';
 
+export type WorkDayKey = 'senin' | 'selasa' | 'rabu' | 'kamis' | 'jumat';
+
+export interface DailyWorkSchedule {
+  checkIn: string; // HH:mm
+  checkOut: string; // HH:mm
+  enabled?: boolean;
+}
+
+export type WeeklyWorkSchedule = Record<WorkDayKey, DailyWorkSchedule>;
+
+export interface WorkScheduleConfig {
+  guru: WeeklyWorkSchedule;
+  karyawan: WeeklyWorkSchedule;
+}
+
 export interface SchoolProfile {
   name: string;
   motto: string;
@@ -10,6 +25,7 @@ export interface SchoolProfile {
   email: string;
   principalName: string;
   foundationName?: string;
+  workSchedule?: WorkScheduleConfig;
   schoolCoordinates: {
     lat: number;
     lng: number;
@@ -148,13 +164,25 @@ export interface StudentAttendanceRecord {
 export interface TeacherAttendanceRecord {
   id: string;
   date: string; // YYYY-MM-DD
-  time: string; // HH:mm:ss
+  time: string; // HH:mm:ss (Jam Masuk)
   teacherId: string;
   teacherName: string;
   selfieUrl: string;
   status: 'Hadir Tepat Waktu' | 'Terlambat' | 'Izin' | 'Sakit' | 'Cuti';
   notes?: string;
   location: {
+    lat: number;
+    lng: number;
+    accuracy: number;
+    distanceMeters: number;
+    inRadius: boolean;
+    addressDescription?: string;
+  };
+  checkOutTime?: string; // HH:mm:ss (Jam Keluar)
+  checkOutSelfieUrl?: string;
+  checkOutNotes?: string;
+  checkOutEarly?: boolean;
+  checkOutLocation?: {
     lat: number;
     lng: number;
     accuracy: number;
@@ -276,6 +304,22 @@ export interface PublishHistoryEntry {
 }
 
 export type AutoSaveStatus = 'synced' | 'saving' | 'offline';
+
+export type SupabaseConnectionState =
+  | 'connected'
+  | 'needs_table_setup'
+  | 'rls_blocked'
+  | 'disconnected'
+  | 'unconfigured';
+
+export interface DatabaseSyncInfo {
+  supabaseStatus: SupabaseConnectionState;
+  accountsTableStatus: SupabaseConnectionState;
+  storage: 'supabase+local-cache' | 'local-cache';
+  supabaseProjectUrl: string | null;
+  supabaseHint?: string | null;
+  lastCloudSyncAt?: string | null;
+}
 
 export interface RealtimeSyncEvent {
   version: number;

@@ -17,7 +17,9 @@ import {
   AlertTriangle,
   School,
   FileSpreadsheet,
-  Share2
+  Share2,
+  Clock,
+  ClipboardCheck
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -415,11 +417,32 @@ export const Dashboard: React.FC<DashboardProps> = ({ onNavigateTab, onOpenShare
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {[
             {
+              tab: 'attendance-hub',
+              title: 'Absensi Murid & Guru',
+              subtitle: 'Menu Terpadu Harian',
+              icon: ClipboardCheck,
+              color: 'text-emerald-800 bg-emerald-100'
+            },
+            {
               tab: 'teacher-att',
               title: 'Selfie Guru',
               subtitle: 'Kamera & GPS 150m',
               icon: Camera,
               color: 'text-emerald-700 bg-emerald-50'
+            },
+            {
+              tab: 'schedule-guru',
+              title: 'Jadwal Guru',
+              subtitle: "Masuk & Keluar (Sen–Jum)",
+              icon: Clock,
+              color: 'text-emerald-800 bg-emerald-50'
+            },
+            {
+              tab: 'schedule-karyawan',
+              title: 'Jadwal Karyawan',
+              subtitle: "Masuk & Keluar (Sen–Jum)",
+              icon: Clock,
+              color: 'text-sky-800 bg-sky-50'
             },
             {
               tab: 'student-att',
